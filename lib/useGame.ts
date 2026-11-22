@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "./supabase";
-import { serverNow } from "@/app/actions";
+import { getResults, serverNow, type Results } from "@/app/actions";
 import type { Game, Participant, Team } from "./types";
 
 export type GameState = { game: Game | null; teams: Team[]; participants: Participant[] };
@@ -61,4 +61,17 @@ export function useRemaining(game: Game | null) {
   if (game.paused_remaining_ms !== null) return game.paused_remaining_ms;
   if (!game.phase_ends_at) return null;
   return Math.max(0, new Date(game.phase_ends_at).getTime() - (now + offset));
+}
+
+/** Public results (standings + reveal), refetched whenever the game moves to a stage that shows them. */
+export function useResults(game: Game | null) {
+  const [results, setResults] = useState<Results | null>(null);
+  const phase = game?.phase,
+    stage = game?.stage,
+    extra = game?.show_extra;
+  useEffect(() => {
+    if (!stage) return;
+    if (["reveal", "leaderboard", "finale", "final"].includes(stage) || extra) getResults().then(setResults);
+  }, [phase, stage, extra]);
+  return results;
 }
