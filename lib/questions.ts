@@ -1,3 +1,5 @@
+import { TOKENS } from "./theme";
+
 // Public question content (safe to ship to phones). Answer key lives in lib/answers.ts (server-only).
 
 export type Pose = "idle" | "point" | "think" | "shrug" | "cheer" | "wave";
@@ -288,4 +290,4 @@ export const RULES = [
   "Points add up across all questions. Highest total wins!",
 ];
 
-export const TEAM_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ec4899", "#14b8a6", "#f97316", "#6366f1", "#84cc16"];
+export const TEAM_COLORS = TOKENS.map((t) => t.color);

@@ -1,181 +1,320 @@
 import type { ReactNode } from "react";
 import type { SceneId } from "@/lib/questions";
+import { C } from "@/lib/theme";
 
-// 1600x900 backdrops; the floor line sits at y≈720 so characters (bottom-anchored) stand on it.
-const W = 1600,
-  H = 900,
-  FLOOR = 720;
+// 1600×900 backdrops in the Game Night Press style: flat color walls with dots, ink outlines,
+// an ink floor with a marigold stripe at y≈720. Characters stand at the far left/right (and center
+// when there are three), so key signage sits top-center or between them.
+const FLOOR = 720;
+const K = { stroke: C.ink, strokeWidth: 5, strokeLinejoin: "round" as const };
 
-function Frame({ wall, floor, children }: { wall: [string, string]; floor: string; children?: ReactNode }) {
+function Room({ wall, children, dots = 0.13 }: { wall: string; children?: ReactNode; dots?: number }) {
   return (
     <>
       <defs>
-        <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor={wall[0]} />
-          <stop offset="1" stopColor={wall[1]} />
-        </linearGradient>
+        <pattern id="gte-dots-scene" width="18" height="18" patternUnits="userSpaceOnUse">
+          <circle cx="9" cy="9" r="2.1" fill={C.paper} opacity={dots} />
+        </pattern>
+        <pattern id="gte-floor-scene" width="44" height="44" patternUnits="userSpaceOnUse">
+          <path d="M0 44L44 0" stroke="#2A2933" strokeWidth="3" />
+        </pattern>
       </defs>
-      <rect width={W} height={H} fill="url(#wall)" />
-      <rect y={FLOOR} width={W} height={H - FLOOR} fill={floor} />
-      <rect y={FLOOR} width={W} height={6} fill="rgba(0,0,0,.25)" />
+      <rect width="1600" height={FLOOR} fill={wall} />
+      <rect width="1600" height={FLOOR} fill="url(#gte-dots-scene)" />
       {children}
+      <rect y={FLOOR} width="1600" height="180" fill={C.ink} />
+      <rect y={FLOOR} width="1600" height="180" fill="url(#gte-floor-scene)" />
+      <rect y="714" width="1600" height="12" fill={C.mari} stroke={C.ink} strokeWidth="3" />
     </>
   );
 }
 
-const Door = ({ x, n, open }: { x: number; n: number; open?: boolean }) => (
-  <g>
-    <rect x={x} y={300} width={200} height={420} rx={10} fill={open ? "#0b0b14" : "#f59e0b"} stroke="#fde68a" strokeWidth={10} />
-    {!open && <circle cx={x + 165} cy={520} r={10} fill="#78350f" />}
-    <text x={x + 100} y={280} textAnchor="middle" fontSize={64} fontWeight={800} fill="#fde68a">
-      {n}
+function T(p: { x: number; y: number; size: number; fill: string; font?: "mono" | "display" | "serif"; children: ReactNode; spacing?: number }) {
+  return (
+    <text
+      x={p.x}
+      y={p.y}
+      fill={p.fill}
+      style={{
+        textAnchor: "middle",
+        fontFamily: p.font === "mono" ? "var(--font-jetbrains), monospace" : p.font === "serif" ? "var(--font-serif), Georgia, serif" : "var(--font-display), sans-serif",
+        fontStyle: p.font === "serif" ? "italic" : "normal",
+        fontWeight: p.font === "serif" ? 400 : 800,
+        fontSize: p.size,
+        letterSpacing: p.spacing ?? 0,
+      }}
+    >
+      {p.children}
     </text>
-  </g>
-);
+  );
+}
 
-const SCENES: Record<SceneId, ReactNode> = {
-  gameshow: (
-    <Frame wall={["#3b0764", "#1e1b4b"]} floor="#4c1d95">
-      {[200, 800, 1400].map((x) => (
-        <polygon key={x} points={`${x - 40},0 ${x + 40},0 ${x + 220},${FLOOR} ${x - 220},${FLOOR}`} fill="rgba(255,255,255,.05)" />
-      ))}
+function valance() {
+  let d = "M0 0 H1600 V52";
+  for (let x = 1600; x > 0; x -= 80) d += ` Q${x - 40} 104 ${x - 80} 52`;
+  return d + " Z";
+}
+const VALANCE = valance();
+
+function Door({ x, n, open }: { x: number; n: number; open?: boolean }) {
+  return (
+    <g>
+      <rect x={x - 14} y="286" width="228" height="434" rx="14" fill={C.ink} />
+      {open ? (
+        <g className="gte-drop">
+          <rect x={x} y="300" width="200" height="420" rx="8" fill="#0E0D1A" {...K} />
+          <polygon points={`${x + 6},716 ${x + 194},716 ${x + 160},630 ${x + 40},630`} fill="#211F2E" />
+          <polygon points={`${x},300 ${x - 60},284 ${x - 60},736 ${x},720`} fill={C.mari} {...K} />
+          <circle cx={x - 46} cy="520" r="7" fill={C.ink} />
+        </g>
+      ) : (
+        <>
+          <rect x={x} y="300" width="200" height="420" rx="8" fill={C.mari} {...K} />
+          <rect x={x + 24} y="326" width="152" height="160" rx="6" fill="none" stroke="#D99A00" strokeWidth="5" />
+          <rect x={x + 24} y="510" width="152" height="182" rx="6" fill="none" stroke="#D99A00" strokeWidth="5" />
+          <circle cx={x + 170} cy="520" r="10" fill={C.ink} />
+        </>
+      )}
+      <circle cx={x + 100} cy="250" r="31" fill={C.paper} {...K} />
+      <T x={x + 100} y={266} size={44} fill={C.ink} font="mono">
+        {n}
+      </T>
+    </g>
+  );
+}
+
+/** 1A: doors react to the story (Door 1 picked from line 4, Door 3 opens from line 6). */
+function GameShow({ step }: { step: number }) {
+  return (
+    <Room wall={C.cobalt}>
+      <path d="M330 720 V370 Q330 222 800 222 Q1270 222 1270 370 V720 Z" fill="#22389F" {...K} />
+      <polygon points="720,0 880,0 1210,720 390,720" fill="#FFF3CF" opacity="0.1" />
+      <polygon points="160,0 250,0 440,720 -40,720" fill="#FFF3CF" opacity="0.1" />
+      <polygon points="1350,0 1440,0 1640,720 1160,720" fill="#FFF3CF" opacity="0.1" />
+      <path d="M0 0 H170 Q128 300 150 520 Q160 640 120 720 H0 Z" fill={C.verm} {...K} />
+      <path d="M44 0 Q34 360 40 720 M98 0 Q80 360 86 720" fill="none" stroke={C.vermDark} strokeWidth="7" strokeLinecap="round" />
+      <path d="M1600 0 H1430 Q1472 300 1450 520 Q1440 640 1480 720 H1600 Z" fill={C.verm} {...K} />
+      <path d="M1556 0 Q1566 360 1560 720 M1502 0 Q1520 360 1514 720" fill="none" stroke={C.vermDark} strokeWidth="7" strokeLinecap="round" />
+      <path d={VALANCE} fill={C.verm} {...K} />
+      <rect x="500" y="74" width="600" height="124" rx="22" fill={C.ink} stroke={C.mari} strokeWidth="6" />
+      <rect x="516" y="90" width="568" height="92" rx="12" fill="none" stroke="#FFF1C2" strokeWidth="8" strokeLinecap="round" strokeDasharray="0 24" />
+      <T x={800} y={158} size={64} fill={C.mari} spacing={3}>
+        PICK-A-DOOR
+      </T>
       <Door x={420} n={1} />
       <Door x={700} n={2} />
-      <Door x={980} n={3} open />
-      <text x={800} y={140} textAnchor="middle" fontSize={84} fontWeight={900} fill="#facc15" letterSpacing={6}>
-        PICK-A-DOOR
-      </text>
-    </Frame>
-  ),
+      <Door x={980} n={3} open={step >= 5} />
+      {step >= 3 && (
+        <g className="gte-drop">
+          <rect x="396" y="276" width="248" height="454" rx="20" fill="none" stroke={C.verm} strokeWidth="8" strokeDasharray="22 12" />
+          <rect x="450" y="384" width="140" height="46" rx="23" fill={C.verm} stroke={C.ink} strokeWidth="4" />
+          <T x={520} y={415} size={22} fill={C.ink} font="mono" spacing={2}>
+            PICKED
+          </T>
+        </g>
+      )}
+    </Room>
+  );
+}
+
+function Helix() {
+  const a: string[] = [];
+  const b: string[] = [];
+  const rungs: ReactNode[] = [];
+  for (let i = 0; i <= 40; i++) {
+    const x = 600 + i * 10;
+    const y1 = 230 + Math.sin(i / 4) * 52;
+    const y2 = 230 - Math.sin(i / 4) * 52;
+    a.push(`${i ? "L" : "M"}${x} ${y1.toFixed(1)}`);
+    b.push(`${i ? "L" : "M"}${x} ${y2.toFixed(1)}`);
+    if (i % 3 === 0) rungs.push(<line key={i} x1={x} x2={x} y1={y1} y2={y2} stroke={C.ink} strokeWidth="4" />);
+  }
+  return (
+    <g>
+      {rungs}
+      <path d={a.join(" ")} fill="none" stroke={C.verm} strokeWidth="9" strokeLinecap="round" />
+      <path d={b.join(" ")} fill="none" stroke={C.cobalt} strokeWidth="9" strokeLinecap="round" />
+    </g>
+  );
+}
+
+function Board({ x, y, w, h, fill = C.paper2 }: { x: number; y: number; w: number; h: number; fill?: string }) {
+  return (
+    <>
+      <rect x={x + 8} y={y + 8} width={w} height={h} rx="18" fill={C.ink} />
+      <rect x={x} y={y} width={w} height={h} rx="18" fill={fill} {...K} />
+    </>
+  );
+}
+
+const SCENES: Record<Exclude<SceneId, "gameshow">, ReactNode> = {
   lab: (
-    <Frame wall={["#134e4a", "#0f2f2e"]} floor="#1f2937">
-      <g transform="translate(470 -40)">
-      <rect x={120} y={160} width={420} height={260} rx={12} fill="#0b1f1e" stroke="#5eead4" strokeWidth={6} />
-      {Array.from({ length: 9 }).map((_, i) => (
-        <g key={i}>
-          <circle cx={170 + i * 40} cy={290 + Math.sin(i) * 60} r={10} fill="#5eead4" />
-          <circle cx={170 + i * 40} cy={290 - Math.sin(i) * 60} r={10} fill="#f472b6" />
-          <line x1={170 + i * 40} x2={170 + i * 40} y1={290 + Math.sin(i) * 60} y2={290 - Math.sin(i) * 60} stroke="#99f6e4" strokeWidth={3} />
+    <Room wall="#1E9C93">
+      {[0, 1].map((r) => (
+        <g key={r}>
+          <rect x="70" y={110 + r * 150} width="330" height="16" fill={C.paper2} {...K} />
+          {[0, 1, 2, 3].map((j) => (
+            <rect key={j} x={100 + j * 72} y={56 + r * 150} width="42" height="54" rx="8" fill={[C.mari, C.verm, C.paper2, "#B58CFF"][(j + r) % 4]} {...K} />
+          ))}
         </g>
       ))}
-      <text x={330} y={400} textAnchor="middle" fontSize={34} fill="#99f6e4" fontWeight={700}>
-        MATCH: 1 in 1,000,000
-      </text>
-      </g>
-      <rect x={1000} y={520} width={480} height={200} fill="#334155" />
-      <rect x={980} y={500} width={520} height={24} fill="#64748b" />
-      {[1060, 1140, 1220].map((x, i) => (
-        <rect key={x} x={x} y={430} width={30} height={70} rx={8} fill={["#f472b6", "#60a5fa", "#facc15"][i]} />
+      <rect x="760" y="430" width="80" height="180" fill="#2A2933" {...K} />
+      <rect x="520" y="70" width="560" height="380" rx="26" fill={C.ink} />
+      <rect x="544" y="92" width="512" height="336" rx="14" fill={C.paper2} {...K} />
+      <Helix />
+      <rect x="590" y="334" width="420" height="64" rx="12" fill={C.verm} {...K} />
+      <T x={800} y={378} size={32} fill={C.ink} font="mono">
+        MATCH · 1 in 1,000,000
+      </T>
+      <rect x="1100" y="560" width="440" height="24" fill={C.paper2} {...K} />
+      <rect x="1120" y="584" width="400" height="136" fill="#2A2933" {...K} />
+      {[1140, 1210, 1280].map((x, i) => (
+        <path key={x} d={`M${x} 470 h34 v40 l14 50 h-62 l14 -50 z`} fill={[C.mari, "#FF7FB8", C.paper2][i]} {...K} />
       ))}
-      <rect x={1320} y={400} width={30} height={100} fill="#1f2937" />
-      <circle cx={1335} cy={390} r={30} fill="#475569" />
-    </Frame>
+    </Room>
   ),
   hospital: (
-    <Frame wall={["#e0f2fe", "#bae6fd"]} floor="#94a3b8">
-      <rect x={1080} y={140} width={360} height={260} fill="#7dd3fc" stroke="#f8fafc" strokeWidth={14} />
-      <line x1={1260} x2={1260} y1={140} y2={400} stroke="#f8fafc" strokeWidth={10} />
-      <rect x={560} y={200} width={480} height={260} rx={10} fill="#ffffff" stroke="#0ea5e9" strokeWidth={6} />
-      <text x={600} y={270} fontSize={44} fontWeight={800} fill="#0369a1">Surgeon A — 95%</text>
-      <text x={600} y={350} fontSize={44} fontWeight={800} fill="#0369a1">Surgeon B — 90%</text>
-      <text x={600} y={420} fontSize={28} fill="#64748b">overall success</text>
-      <rect x={1040} y={560} width={420} height={70} rx={14} fill="#f8fafc" />
-      <rect x={1040} y={620} width={420} height={30} fill="#cbd5e1" />
-      <rect x={1060} y={650} width={14} height={70} fill="#64748b" />
-      <rect x={1426} y={650} width={14} height={70} fill="#64748b" />
-      <path d="M770 70 h40 v-40 h40 v40 h40 v40 h-40 v40 h-40 v-40 h-40 Z" fill="#ef4444" />
-    </Frame>
+    <Room wall={C.cobaltLight}>
+      <path d="M760 60 h40 v-40 h40 v40 h40 v40 h-40 v40 h-40 v-40 h-40 Z" fill={C.verm} {...K} />
+      <Board x={540} y={200} w={520} h={270} />
+      <T x={800} y={280} size={48} fill={C.ink} font="mono">
+        SURGEON A · 95%
+      </T>
+      <T x={800} y={360} size={48} fill={C.ink} font="mono">
+        SURGEON B · 90%
+      </T>
+      <T x={800} y={432} size={32} fill={C.muted} font="serif">
+        overall success
+      </T>
+      <rect x="1120" y="110" width="330" height="250" rx="10" fill="#CFE8FF" stroke={C.paper2} strokeWidth="16" />
+      <rect x="1112" y="102" width="346" height="266" rx="14" fill="none" {...K} />
+      <line x1="1285" x2="1285" y1="110" y2="360" stroke={C.paper2} strokeWidth="12" />
+      <rect x="120" y="140" width="250" height="190" rx="12" fill={C.paper2} {...K} />
+      <path d="M140 250 h40 l20 -50 l25 90 l20 -40 h125" fill="none" stroke={C.verm} strokeWidth="7" strokeLinejoin="round" strokeLinecap="round" />
+      <rect x="1050" y="560" width="440" height="70" rx="16" fill={C.paper2} {...K} />
+      <rect x="1050" y="618" width="440" height="34" fill="#CFC6B6" {...K} />
+      <rect x="1068" y="652" width="16" height="68" fill={C.ink} />
+      <rect x="1456" y="652" width="16" height="68" fill={C.ink} />
+    </Room>
   ),
   classroom: (
-    <Frame wall={["#fef3c7", "#fde68a"]} floor="#a16207">
-      <rect x={300} y={50} width={1000} height={290} rx={12} fill="#14532d" stroke="#854d0e" strokeWidth={18} />
-      <text x={800} y={160} textAnchor="middle" fontSize={80} fill="#f0fdf4" fontWeight={700} fontFamily="cursive">
+    <Room wall={C.mari} dots={0.22}>
+      <rect x="290" y="40" width="1020" height="310" rx="16" fill="#9A4A1E" {...K} />
+      <rect x="310" y="60" width="980" height="270" rx="8" fill="#1F4D3A" {...K} />
+      <T x={800} y={175} size={88} fill={C.paper} font="serif">
         target = ⅔ × average
-      </text>
-      <text x={800} y={250} textAnchor="middle" fontSize={48} fill="#bbf7d0" fontFamily="cursive">
+      </T>
+      <T x={800} y={272} size={46} fill={C.mari} font="mono">
         pick 0 … 100
-      </text>
-      {[140, 1340].map((x) => (
+      </T>
+      {[110, 1310].map((x) => (
         <g key={x}>
-          <rect x={x} y={610} width={160} height={20} fill="#78350f" />
-          <rect x={x + 10} y={630} width={14} height={90} fill="#78350f" />
-          <rect x={x + 136} y={630} width={14} height={90} fill="#78350f" />
+          <rect x={x} y="590" width="180" height="22" fill="#9A4A1E" {...K} />
+          <rect x={x + 12} y="612" width="16" height="108" fill={C.ink} />
+          <rect x={x + 152} y="612" width="16" height="108" fill={C.ink} />
         </g>
       ))}
-    </Frame>
+    </Room>
   ),
   arena: (
-    <Frame wall={["#0f172a", "#020617"]} floor="#1e293b">
-      <rect x={0} y={0} width={800} height={FLOOR} fill="rgba(220,38,38,.18)" />
-      <rect x={800} y={0} width={800} height={FLOOR} fill="rgba(37,99,235,.18)" />
-      <g fontWeight={900} fontSize={40} textAnchor="middle">
-        <rect x={560} y={60} width={480} height={220} rx={16} fill="#0b1222" stroke="#e2e8f0" strokeWidth={4} />
-        <text x={800} y={108} fill="#e2e8f0">COOPERATE</text>
-        <text x={800} y={150} fill="#e2e8f0" fontSize={28}>3 / 3 · 0 / 5</text>
-        <text x={800} y={210} fill="#e2e8f0">DEFECT</text>
-        <text x={800} y={252} fill="#e2e8f0" fontSize={28}>5 / 0 · 1 / 1</text>
-      </g>
-      <rect x={180} y={560} width={220} height={160} rx={12} fill="#7f1d1d" />
-      <rect x={1200} y={560} width={220} height={160} rx={12} fill="#1e3a8a" />
-      <circle cx={250} cy={560} r={28} fill="#22c55e" />
-      <circle cx={330} cy={560} r={28} fill="#ef4444" />
-      <circle cx={1270} cy={560} r={28} fill="#22c55e" />
-      <circle cx={1350} cy={560} r={28} fill="#ef4444" />
-    </Frame>
+    <Room wall={C.verm}>
+      <rect x="800" width="800" height={FLOOR} fill={C.cobalt} />
+      <rect x="800" width="800" height={FLOOR} fill="url(#gte-dots-scene)" />
+      <line x1="800" x2="800" y1="0" y2={FLOOR} stroke={C.ink} strokeWidth="6" />
+      <Board x={560} y={50} w={480} h={230} />
+      <T x={800} y={104} size={40} fill={C.ink}>
+        COOPERATE
+      </T>
+      <T x={800} y={148} size={30} fill={C.ink} font="mono">
+        3 / 3 · 0 / 5
+      </T>
+      <T x={800} y={212} size={40} fill={C.ink}>
+        DEFECT
+      </T>
+      <T x={800} y={256} size={30} fill={C.ink} font="mono">
+        5 / 0 · 1 / 1
+      </T>
+      {[330, 1050].map((x) => (
+        <g key={x}>
+          <rect x={x} y="560" width="220" height="160" rx="14" fill={C.paper2} {...K} />
+          <circle cx={x + 70} cy="556" r="30" fill="#34C77B" {...K} />
+          <circle cx={x + 150} cy="556" r="30" fill={C.verm} {...K} />
+          <T x={x + 110} y={660} size={24} fill={C.ink} font="mono">
+            C · D
+          </T>
+        </g>
+      ))}
+    </Room>
   ),
   courtroom: (
-    <Frame wall={["#78350f", "#451a03"]} floor="#292524">
+    <Room wall="#C0703A">
       {Array.from({ length: 8 }).map((_, i) => (
-        <rect key={i} x={i * 200 + 20} y={60} width={160} height={560} fill="rgba(255,255,255,.04)" />
+        <rect key={i} x={i * 200 + 24} y="40" width="152" height="600" rx="8" fill="#A85E2E" stroke={C.ink} strokeWidth="3" />
       ))}
-      <rect x={560} y={380} width={480} height={340} fill="#92400e" stroke="#b45309" strokeWidth={8} />
-      <circle cx={800} cy={130} r={85} fill="#facc15" opacity={0.85} />
-      <path d="M800 70 v120 M740 100 h120 M740 100 l-25 50 h50 Z M860 100 l-25 50 h50 Z" stroke="#78350f" strokeWidth={8} fill="#78350f" />
-      <rect x={100} y={600} width={340} height={120} fill="#7c2d12" />
-      <rect x={1160} y={600} width={340} height={120} fill="#7c2d12" />
-    </Frame>
+      <circle cx="800" cy="138" r="92" fill={C.mari} {...K} />
+      <path d="M800 78 v120 M740 110 h120 M740 110 l-25 50 h50 Z M860 110 l-25 50 h50 Z M770 200 h60" stroke={C.ink} strokeWidth="6" fill="none" strokeLinejoin="round" strokeLinecap="round" />
+      <rect x="540" y="370" width="520" height="350" rx="10" fill="#7A3E1A" {...K} />
+      <rect x="520" y="350" width="560" height="40" rx="8" fill="#A85E2E" {...K} />
+      <rect x="700" y="460" width="200" height="70" rx="10" fill={C.mari} {...K} />
+      <T x={800} y={506} size={30} fill={C.ink} font="mono">
+        ORDER
+      </T>
+      <rect x="80" y="600" width="360" height="120" fill="#7A3E1A" {...K} />
+      <rect x="1160" y="600" width="360" height="120" fill="#7A3E1A" {...K} />
+    </Room>
   ),
   airfield: (
-    <Frame wall={["#7dd3fc", "#e0f2fe"]} floor="#4b5563">
-      <circle cx={1400} cy={140} r={70} fill="#fde047" />
-      <rect y={FLOOR + 70} width={W} height={20} fill="#f8fafc" opacity={0.6} />
+    <Room wall="#9CC9FF" dots={0.25}>
+      <circle cx="1420" cy="130" r="70" fill={C.mari} {...K} />
+      {[
+        [300, 140, 1],
+        [980, 70, 0.8],
+      ].map(([x, y, s]) => (
+        <path
+          key={x}
+          transform={`translate(${x} ${y}) scale(${s})`}
+          d="M0 40 a40 40 0 0 1 70 -26 a50 50 0 0 1 90 10 a34 34 0 0 1 10 66 h-150 a30 30 0 0 1 -20 -50z"
+          fill={C.paper2}
+          {...K}
+        />
+      ))}
       <g transform="translate(800 400)">
-        <ellipse cx={0} cy={0} rx={330} ry={46} fill="#64748b" />
-        <path d="M-60 -10 L-420 120 L-380 150 L40 30 Z" fill="#94a3b8" />
-        <path d="M-60 -10 L-420 -140 L-380 -170 L40 -30 Z" fill="#94a3b8" />
-        <path d="M250 -10 L380 -140 L420 -130 L330 0 Z" fill="#94a3b8" />
-        <ellipse cx={-280} cy={-4} rx={40} ry={26} fill="#1e293b" />
-        <circle cx={-60} cy={-80} r={22} fill="#334155" />
-        <circle cx={-60} cy={80} r={22} fill="#334155" />
+        <path d="M-60 -10 L-420 120 L-380 150 L40 30 Z" fill="#CFC6B6" {...K} />
+        <path d="M-60 -10 L-420 -140 L-380 -170 L40 -30 Z" fill="#CFC6B6" {...K} />
+        <path d="M250 -10 L380 -140 L420 -130 L330 0 Z" fill="#CFC6B6" {...K} />
+        <ellipse cx="0" cy="0" rx="340" ry="48" fill={C.paper2} {...K} />
+        <ellipse cx="-280" cy="-4" rx="40" ry="26" fill={C.cobalt} {...K} />
+        <circle cx="-60" cy="-82" r="22" fill="#5E5A69" {...K} />
+        <circle cx="-60" cy="82" r="22" fill="#5E5A69" {...K} />
         {[
           [-300, 100], [-250, 80], [-200, 60], [-330, -110], [-260, -90], [-190, -70], [-150, 40], [-140, -50],
-          [330, -100], [360, -120], [300, -60], [200, -10], [150, 10], [250, 8],
+          [330, -100], [360, -120], [300, -60], [200, -10], [150, 12], [250, 8],
         ].map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r={8} fill="#dc2626" />
+          <circle key={i} cx={x} cy={y} r="9" fill={C.verm} stroke={C.ink} strokeWidth="3" />
         ))}
       </g>
-    </Frame>
+    </Room>
   ),
   hall: (
-    <Frame wall={["#1e1b4b", "#0f0a2e"]} floor="#312e81">
-      <rect x={400} y={100} width={800} height={420} rx={16} fill="#0b0a1f" stroke="#a78bfa" strokeWidth={6} />
-      <text x={800} y={170} textAnchor="middle" fontSize={44} fontWeight={800} fill="#c4b5fd">
+    <Room wall="#8F86F0">
+      <polygon points="150,0 230,0 420,720 -60,720" fill="#FFF3CF" opacity="0.1" />
+      <polygon points="1370,0 1450,0 1660,720 1180,720" fill="#FFF3CF" opacity="0.1" />
+      <rect x="408" y="78" width="800" height="400" rx="22" fill={C.ink} />
+      <rect x="400" y="70" width="800" height="400" rx="22" fill={C.ink} stroke={C.mari} strokeWidth="6" />
+      <T x={800} y={138} size={44} fill={C.mari} font="mono" spacing={4}>
         LEADERBOARD
-      </text>
-      {[560, 420, 300, 220].map((w, i) => (
-        <rect key={i} x={480} y={210 + i * 70} width={w} height={46} rx={10} fill={["#facc15", "#a78bfa", "#60a5fa", "#34d399"][i]} />
+      </T>
+      {[600, 470, 360, 250].map((w, i) => (
+        <rect key={i} x="470" y={176 + i * 68} width={w} height="46" rx="10" fill={["#FF6B4A", "#6C8CFF", "#34C77B", "#FFC531"][i]} stroke={C.paper} strokeWidth="3" />
       ))}
-      {[150, 1450].map((x) => (
-        <polygon key={x} points={`${x - 30},0 ${x + 30},0 ${x + 160},${FLOOR} ${x - 160},${FLOOR}`} fill="rgba(167,139,250,.08)" />
-      ))}
-    </Frame>
+    </Room>
   ),
 };
 
-export function Scene({ id }: { id: SceneId }) {
+export function Scene({ id, step = 0 }: { id: SceneId; step?: number }) {
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full" aria-hidden>
-      {SCENES[id]}
+    <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }} aria-hidden="true">
+      {id === "gameshow" ? <GameShow step={step} /> : SCENES[id]}
     </svg>
   );
 }

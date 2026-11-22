@@ -1,73 +1,97 @@
 "use client";
 
-import { motion } from "motion/react";
 import type { Results, Standing } from "@/app/actions";
 import type { Question } from "@/lib/questions";
 import type { Team } from "@/lib/types";
+import { C, LETTERS, fmt1, tokenFor } from "@/lib/theme";
+import { Confetti, I, Token, Trophy, confettiPieces } from "./ui";
 
 const pct = (ok: number, n: number) => `${((ok / n) * 100).toFixed(1)}%`;
-const fmt = (x: number) => (Math.round(x * 100) / 100).toString();
+type Table = NonNullable<Results["table"]>;
 
-export function TeamChip({ team, dim }: { team: Pick<Team, "name" | "color">; dim?: boolean }) {
+/* ---------------- 2B payoff matrix ---------------- */
+
+export function PayoffMatrix({ phone = false }: { phone?: boolean }) {
+  const cells = [
+    ["You cooperate", [3, 3], [0, 5]],
+    ["You defect", [5, 0], [1, 1]],
+  ] as const;
+  const head = phone ? 11 : 15;
+  const num = phone ? 24 : 36;
   return (
-    <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 font-bold" style={{ background: dim ? "rgba(255,255,255,.08)" : team.color, opacity: dim ? 0.6 : 1 }}>
-      {team.name}
-    </span>
+    <figure style={{ margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+      <table className="mono" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, background: C.paper2, border: `2.5px solid ${C.ink}`, borderRadius: phone ? 14 : 16, overflow: "hidden", boxShadow: `${phone ? 3 : 5}px ${phone ? 3 : 5}px 0 ${C.ink}` }}>
+        <thead>
+          <tr>
+            <th style={{ width: phone ? 90 : 150, background: C.ink }} />
+            {["They cooperate", "They defect"].map((h) => (
+              <th key={h} scope="col" style={{ padding: phone ? "8px 6px" : "10px 12px", background: C.ink, color: C.paper, fontSize: head, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", borderLeft: "2.5px solid #3A3842" }}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {cells.map(([label, a, b]) => (
+            <tr key={label}>
+              <th scope="row" style={{ padding: phone ? "0 8px" : "0 14px", textAlign: "left", fontSize: head, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", borderTop: `2.5px solid ${C.ink}` }}>
+                {label}
+              </th>
+              {[a, b].map((p, k) => (
+                <td key={k} style={{ height: phone ? 52 : 70, textAlign: "center", fontSize: num, fontWeight: 800, borderTop: `2.5px solid ${C.ink}`, borderLeft: `2.5px solid ${C.ink}` }}>
+                  <span style={{ color: C.vermDark }}>{p[0]}</span>
+                  <span style={{ color: C.faint }}> / </span>
+                  <span style={{ color: C.cobalt }}>{p[1]}</span>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <figcaption className="label" style={{ display: "flex", gap: 22, fontSize: phone ? 11 : 15, letterSpacing: "0.06em" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, color: C.vermDark }}>
+          <span style={{ width: 12, height: 12, background: C.vermDark }} />
+          Your points
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, color: C.cobalt }}>
+          <span style={{ width: 12, height: 12, background: C.cobalt }} />
+          Their points
+        </span>
+      </figcaption>
+    </figure>
   );
 }
 
-export function PayoffMatrix() {
-  const cell = "border border-white/20 px-4 py-3 text-center";
-  return (
-    <table className="mx-auto border-collapse text-lg">
-      <thead>
-        <tr>
-          <th className={cell}></th>
-          <th className={cell}>Team B Cooperates</th>
-          <th className={cell}>Team B Defects</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <th className={cell}>Team A Cooperates</th>
-          <td className={cell}>A: 3, B: 3</td>
-          <td className={cell}>A: 0, B: 5</td>
-        </tr>
-        <tr>
-          <th className={cell}>Team A Defects</th>
-          <td className={cell}>A: 5, B: 0</td>
-          <td className={cell}>A: 1, B: 1</td>
-        </tr>
-      </tbody>
-    </table>
-  );
-}
+/* ---------------- 1C surgeon breakdown ---------------- */
 
-export function SurgeonTableView({ table }: { table: NonNullable<Results["table"]> }) {
-  const cell = "border border-white/20 px-4 py-2 text-center";
+/** Projector version: paper card. */
+export function SurgeonTable({ table }: { table: Table }) {
+  const cell = { padding: "10px 14px", textAlign: "right" as const, borderTop: `2px solid ${C.line}` };
   return (
-    <table className="mx-auto border-collapse text-lg">
+    <table className="mono gte-pop" style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, background: C.paper2, border: `2.5px solid ${C.ink}`, borderRadius: 16, overflow: "hidden", boxShadow: `5px 5px 0 ${C.ink}` }}>
       <thead>
-        <tr>
-          <th className={cell}>Surgeon</th>
-          <th className={cell}>Mild cases</th>
-          <th className={cell}>Severe cases</th>
-          <th className={cell}>Overall</th>
+        <tr style={{ background: C.ink, color: C.paper, fontSize: 14, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+          {["Surgeon", "Mild", "Severe", "Overall"].map((h, i) => (
+            <th key={h} scope="col" style={{ padding: "10px 14px", textAlign: i ? "right" : "left" }}>
+              {h}
+            </th>
+          ))}
         </tr>
       </thead>
       <tbody>
         {table.map((r) => (
           <tr key={r.surgeon}>
-            <th className={cell}>{r.surgeon}</th>
-            <td className={cell}>
-              {r.mild.ok}/{r.mild.n} = <b>{pct(r.mild.ok, r.mild.n)}</b>
-            </td>
-            <td className={cell}>
-              {r.severe.ok}/{r.severe.n} = <b>{pct(r.severe.ok, r.severe.n)}</b>
-            </td>
-            <td className={cell}>
-              {pct(r.mild.ok + r.severe.ok, r.mild.n + r.severe.n)}
-            </td>
+            <th scope="row" style={{ ...cell, textAlign: "left", fontSize: 30, fontWeight: 800 }}>
+              {r.surgeon}
+            </th>
+            {[r.mild, r.severe, { ok: r.mild.ok + r.severe.ok, n: r.mild.n + r.severe.n }].map((x, k) => (
+              <td key={k} style={cell}>
+                <span style={{ display: "block", fontSize: 26, fontWeight: 800 }}>{pct(x.ok, x.n)}</span>
+                <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: C.muted }}>
+                  {x.ok}/{x.n}
+                </span>
+              </td>
+            ))}
           </tr>
         ))}
       </tbody>
@@ -75,125 +99,406 @@ export function SurgeonTableView({ table }: { table: NonNullable<Results["table"
   );
 }
 
-/** Problem summary shown after the dialogue (host big screen + phones). */
-export function QuestionSummary({ q, big }: { q: Question; big?: boolean }) {
+/** Phone version: the dark "plot twist" card. */
+export function PlotTwist({ table }: { table: Table }) {
   return (
-    <div className={big ? "space-y-5" : "space-y-3"}>
-      <div className="text-sm font-bold tracking-widest text-violet-300 uppercase">
-        {q.code} · {q.topic}
+    <section className="gte-twist" style={{ display: "flex", flexDirection: "column", gap: 12, padding: "18px 16px 16px", background: C.ink, color: C.paper, borderRadius: 20, boxShadow: `5px 5px 0 ${C.verm}` }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span className="serif" style={{ fontSize: 40, lineHeight: 1, color: C.mari }}>
+          Plot twist!
+        </span>
+        <span style={{ fontSize: 16, lineHeight: 1.35, color: "#DCD5C8" }}>The same records, split by how serious the case was.</span>
       </div>
-      <h2 className={`font-black ${big ? "text-5xl" : "text-2xl"}`}>{q.title}</h2>
-      <ul className={`list-disc space-y-1 pl-6 ${big ? "text-2xl" : "text-base"} text-white/85`}>
-        {q.summary.map((s) => (
-          <li key={s}>{s}</li>
-        ))}
-      </ul>
-      {q.extra === "matrix" && <PayoffMatrix />}
-      <p className={`font-bold text-amber-300 ${big ? "text-3xl" : "text-lg"}`}>{q.prompt}</p>
-      {big && q.kind === "mcq" && (
-        <div className="grid grid-cols-2 gap-3">
-          {q.choices.map((c, i) => (
-            <div key={c} className="rounded-2xl bg-white/10 px-5 py-3 text-xl">
-              <b className="mr-2 text-violet-300">{String.fromCharCode(65 + i)}.</b>
-              {c}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function Leaderboard({ standings, highlight, title = "Leaderboard" }: { standings: Standing[]; highlight?: string | null; title?: string }) {
-  const max = Math.max(1, ...standings.map((s) => s.total));
-  return (
-    <div className="mx-auto w-full max-w-4xl space-y-3">
-      <h2 className="mb-6 text-center text-5xl font-black">{title}</h2>
-      {standings.map((s, i) => (
-        <motion.div
-          layout
-          key={s.id}
-          initial={{ opacity: 0, x: -40 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: i * 0.08 }}
-          className={`flex items-center gap-4 rounded-2xl bg-white/5 p-3 ${highlight === s.id ? "ring-4 ring-amber-300" : ""}`}
-        >
-          <span className="w-10 text-center text-3xl font-black text-white/70">{i + 1}</span>
-          <div className="relative h-12 flex-1 overflow-hidden rounded-xl bg-white/5">
-            <motion.div
-              className="absolute inset-y-0 left-0 rounded-xl"
-              style={{ background: s.color }}
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.max(4, (s.total / max) * 100)}%` }}
-              transition={{ duration: 0.9, delay: 0.2 + i * 0.08 }}
-            />
-            <span className="relative z-10 flex h-full items-center px-4 text-xl font-bold">{s.name}</span>
-          </div>
-          <span className="w-24 text-right text-3xl font-black tabular-nums">{fmt(s.total)}</span>
-        </motion.div>
-      ))}
-    </div>
-  );
-}
-
-/** Answer reveal: correct answer, insight, per-team results (averages only). */
-export function Reveal({ q, results, teams }: { q: Question; results: Results; teams: Team[] }) {
-  const r = results.reveal;
-  if (!r) return <p className="text-center text-2xl text-white/60">Loading results…</p>;
-  const team = (id: string) => teams.find((t) => t.id === id);
-  const show = (row: (typeof r.rows)[number]) =>
-    q.kind === "number" ? (row.number ?? "—") : row.choice !== null ? `${String.fromCharCode(65 + row.choice)}. ${q.choices[row.choice]}` : "—";
-  return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <div className="text-sm font-bold tracking-widest text-violet-300 uppercase">
-        {q.code} · {q.title}
-      </div>
-      <motion.h2 initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-5xl font-black text-emerald-300">
-        ✓ {r.answer}
-      </motion.h2>
-      <p className="text-2xl leading-relaxed text-white/85">{r.insight}</p>
-      {results.table && <SurgeonTableView table={results.table} />}
-      {r.twoThirds && r.twoThirds.target !== null && (
-        <p className="text-2xl">
-          Average: <b>{fmt(r.twoThirds.average!)}</b> → target ⅔ × avg = <b className="text-amber-300">{fmt(r.twoThirds.target)}</b> · Closest:{" "}
-          {r.twoThirds.closest.map((id) => team(id)?.name).join(", ")}
-        </p>
-      )}
-      {r.pairs && r.pairs.length > 0 && (
-        <div className="space-y-1 text-xl">
-          <div className="text-white/60">Just for fun, if teams were paired up:</div>
-          {r.pairs.map((p) => (
-            <div key={p.a}>
-              {team(p.a)?.name} ({p.aChoice ? "Defect" : "Cooperate"}) vs {team(p.b)?.name} ({p.bChoice ? "Defect" : "Cooperate"}) →{" "}
-              <b>
-                {p.aPts} : {p.bPts}
-              </b>
-            </div>
-          ))}
-        </div>
-      )}
-      <table className="w-full border-collapse text-xl">
-        <thead className="text-left text-white/60">
-          <tr>
-            <th className="py-2">Team</th>
-            <th>Answer</th>
-            <th className="text-center">Correct</th>
-            <th className="text-center">Avg vote</th>
-            <th className="text-right">Points</th>
+      <table className="mono" style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "#BFB8AA" }}>
+            {["Surgeon", "Mild", "Severe", "Overall"].map((h, i) => (
+              <th key={h} scope="col" style={{ padding: "6px 4px", textAlign: i ? "right" : "left" }}>
+                {h}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {r.rows.map((row) => (
-            <tr key={row.teamId} className="border-t border-white/10">
-              <td className="py-2">{team(row.teamId) && <TeamChip team={team(row.teamId)!} />}</td>
-              <td>{show(row)}</td>
-              <td className="text-center">{row.correct ? "✅ +2" : "❌"}</td>
-              <td className="text-center">{row.votes ? fmt(row.voteAvg) : "—"}</td>
-              <td className="text-right font-black">{fmt(row.points)}</td>
+          {table.map((r) => (
+            <tr key={r.surgeon} style={{ borderTop: "1.5px solid #3A3842" }}>
+              <th scope="row" style={{ padding: "12px 4px", textAlign: "left", fontSize: 24, fontWeight: 800 }}>
+                {r.surgeon}
+              </th>
+              {[r.mild, r.severe, { ok: r.mild.ok + r.severe.ok, n: r.mild.n + r.severe.n }].map((x, k) => (
+                <td key={k} style={{ padding: "12px 4px", textAlign: "right", verticalAlign: "top" }}>
+                  <span style={{ display: "block", fontSize: 19, fontWeight: 800 }}>{k === 2 ? `${Math.round((x.ok / x.n) * 100)}%` : pct(x.ok, x.n)}</span>
+                  <span style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#BFB8AA" }}>
+                    {x.ok}/{x.n}
+                  </span>
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+      <span style={{ fontSize: 15, lineHeight: 1.4, color: "#DCD5C8" }}>How can A have the higher overall rate if B is better in both? Explain what it means for your pick.</span>
+    </section>
   );
 }
+
+/* ---------------- leaderboards ---------------- */
+
+const PIECES_LB = confettiPieces(56, 11);
+
+export function HostLeaderboard({ standings, final, played }: { standings: Standing[]; final: boolean; played: string[] }) {
+  const max = Math.max(1, ...standings.map((s) => s.total));
+  const rowH = standings.length > 7 ? 56 : 76;
+  return (
+    <>
+      <div style={{ position: "absolute", left: 56, right: 56, top: 104, display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
+          {final && <Trophy size={92} />}
+          <h1 className="gte-drop" style={{ margin: 0, fontSize: 100, lineHeight: 0.9, fontWeight: 800, letterSpacing: "-0.05em", textShadow: final ? `6px 5px 0 ${C.verm}` : "none" }}>
+            {final ? "Final Standings" : "Leaderboard"}
+          </h1>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: 10, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 640 }}>
+          <span className="label" style={{ fontSize: 16, letterSpacing: "0.12em", color: C.muted, marginRight: 6 }}>
+            {final ? `All ${played.length} played` : "After"}
+          </span>
+          {played.map((c) => (
+            <span key={c} className="mono" style={{ padding: "4px 10px", borderRadius: 8, border: `2px solid ${C.ink}`, background: C.paper2, fontSize: 17, fontWeight: 800 }}>
+              {c}
+            </span>
+          ))}
+        </div>
+      </div>
+      <ol style={{ position: "absolute", left: 56, right: 56, top: 248, margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: rowH > 60 ? 10 : 6 }}>
+        {standings.map((s, i) => {
+          const champ = final && i === 0;
+          return (
+            <li
+              key={s.id}
+              className="gte-rowin"
+              style={{
+                height: rowH,
+                boxSizing: "border-box",
+                padding: "0 22px 0 16px",
+                display: "grid",
+                gridTemplateColumns: "64px 52px 400px minmax(0, 1fr) 132px",
+                alignItems: "center",
+                columnGap: 18,
+                borderRadius: 18,
+                border: champ ? `3px solid ${C.ink}` : `2px solid ${C.line}`,
+                background: champ ? "#FFE9A6" : C.paper2,
+                animationDelay: `${(i * 0.09).toFixed(2)}s`,
+              }}
+            >
+              <span className="mono" style={{ fontSize: rowH > 60 ? 42 : 32, fontWeight: 800, letterSpacing: "-0.05em", textAlign: "center" }}>
+                {i + 1}
+              </span>
+              <Token team={s} index={i} size={rowH > 60 ? 50 : 42} radius={14} />
+              <span style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                <span style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.025em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</span>
+                {champ && (
+                  <span className="label" style={{ flex: "none", padding: "4px 10px", borderRadius: 999, background: C.ink, color: C.mari, fontSize: 13, letterSpacing: "0.12em" }}>
+                    Champions
+                  </span>
+                )}
+              </span>
+              <span style={{ height: rowH > 60 ? 44 : 34, display: "block" }}>
+                <span
+                  className="gte-grow"
+                  style={{ display: "block", width: `${Math.max(2, (s.total / max) * 100).toFixed(1)}%`, height: "100%", boxSizing: "border-box", borderRadius: 10, border: `2.5px solid ${C.ink}`, background: tokenFor(s, i).color, boxShadow: `3px 3px 0 ${C.ink}`, animationDelay: `${(0.25 + i * 0.12).toFixed(2)}s` }}
+                />
+              </span>
+              <span className="mono" style={{ fontSize: 40, fontWeight: 800, letterSpacing: "-0.04em", textAlign: "right" }}>
+                {fmt1(s.total)}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      {final && <Confetti pieces={PIECES_LB} />}
+    </>
+  );
+}
+
+export function PhoneLeaderboard({ standings, final, mine, playedCount }: { standings: Standing[]; final: boolean; mine: string; playedCount: number }) {
+  const max = Math.max(1, ...standings.map((s) => s.total));
+  return (
+    <main style={{ flex: 1, display: "flex", flexDirection: "column", gap: 18, padding: "22px 20px 24px" }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span className="label" style={{ fontSize: 12, color: C.muted }}>
+            {final ? `All ${playedCount} questions` : `After ${playedCount} question${playedCount === 1 ? "" : "s"}`}
+          </span>
+          <h1 style={{ margin: 0, fontSize: 40, lineHeight: 0.95, fontWeight: 800, letterSpacing: "-0.045em", textShadow: final ? `3px 3px 0 ${C.verm}` : "none" }}>{final ? "Final standings" : "Leaderboard"}</h1>
+        </div>
+        {final && <Trophy size={56} />}
+      </div>
+      <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 9 }}>
+        {standings.map((s, i) => {
+          const you = s.id === mine;
+          return (
+            <li
+              key={s.id}
+              className="gte-rowin"
+              style={{
+                padding: "10px 14px 12px 10px",
+                display: "grid",
+                gridTemplateColumns: "30px 38px minmax(0, 1fr) auto",
+                gridTemplateRows: "auto auto",
+                columnGap: 10,
+                rowGap: 8,
+                alignItems: "center",
+                border: you ? `3px solid ${C.ink}` : `2px solid ${C.line}`,
+                borderRadius: 16,
+                background: you ? "#fff" : C.paper2,
+                boxShadow: you ? `4px 4px 0 ${C.ink}` : "none",
+                animationDelay: `${(i * 0.07).toFixed(2)}s`,
+              }}
+            >
+              <span className="mono" style={{ gridRow: "1 / span 2", fontSize: 24, fontWeight: 800, textAlign: "center" }}>
+                {i + 1}
+              </span>
+              <span style={{ gridRow: "1 / span 2" }}>
+                <Token team={s} index={i} size={38} radius={11} />
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <span style={{ fontSize: 17, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</span>
+                {you && (
+                  <span className="mono" style={{ flex: "none", padding: "2px 7px", borderRadius: 999, background: C.ink, color: C.paper, fontSize: 11, fontWeight: 800, letterSpacing: "0.1em" }}>
+                    YOU
+                  </span>
+                )}
+              </span>
+              <span className="mono" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.04em", textAlign: "right" }}>
+                {fmt1(s.total)}
+              </span>
+              <span style={{ gridColumn: "3 / span 2", height: 12, display: "block" }}>
+                <span className="gte-grow" style={{ display: "block", width: `${Math.max(3, (s.total / max) * 100).toFixed(1)}%`, height: "100%", boxSizing: "border-box", borderRadius: 999, border: `2px solid ${C.ink}`, background: tokenFor(s, i).color, animationDelay: `${(0.15 + i * 0.1).toFixed(2)}s` }} />
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </main>
+  );
+}
+
+/* ---------------- reveal (projector) ---------------- */
+
+function CorrectStamp({ reason }: { reason?: string }) {
+  return (
+    <span className="gte-stamp" style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+      <span className="mono" style={{ display: "inline-flex", alignItems: "center", gap: 5, height: 30, padding: "0 10px", borderRadius: 999, border: `2px solid ${C.ink}`, background: C.cobalt, color: C.paper, fontSize: 15, fontWeight: 800 }}>
+        <I.check size={14} />
+        +2
+      </span>
+      {reason && (
+        <span className="label" style={{ fontSize: 11, letterSpacing: "0.08em", color: C.cobalt }}>
+          {reason}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function NumberLine({ r, teams }: { r: NonNullable<Results["reveal"]>; teams: Team[] }) {
+  const tt = r.twoThirds!;
+  const picks = r.rows.filter((x) => x.number !== null);
+  const pctX = (v: number) => `${Math.max(0, Math.min(100, v))}%`;
+  return (
+    <figure className="card gte-pop" style={{ margin: "24px 0 0", padding: "20px 24px 14px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <figcaption className="mono" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, fontSize: 17, fontWeight: 800 }}>
+        <span>
+          avg <span style={{ fontSize: 22 }}>{fmt1(tt.average!)}</span> → ⅔ × avg = <span style={{ fontSize: 22, color: C.vermDark }}>{fmt1(tt.target!)}</span>
+        </span>
+        <span className="label" style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13, letterSpacing: "0.08em" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <span style={{ width: 14, height: 14, borderRadius: 999, boxShadow: `0 0 0 3px ${C.cobalt}` }} />
+            +2 for 0
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <span style={{ width: 14, height: 14, borderRadius: 999, boxShadow: `0 0 0 3px ${C.verm}` }} />
+            +2 closest
+          </span>
+        </span>
+      </figcaption>
+      <div role="img" aria-label={`Number line of team picks. Average ${fmt1(tt.average!)}, target ${fmt1(tt.target!)}.`} style={{ position: "relative", height: 188, margin: "0 18px" }}>
+        <span style={{ position: "absolute", left: 0, right: 0, top: 91, height: 3, background: C.ink }} />
+        {Array.from({ length: 11 }, (_, k) => (
+          <span key={k} style={{ position: "absolute", left: `${k * 10}%`, top: 85, width: 2, height: 15, marginLeft: -1, background: C.ink }} />
+        ))}
+        {[
+          [0, "0"],
+          [50, "50"],
+          [100, "100"],
+        ].map(([v, l]) => (
+          <span key={l} className="mono" style={{ position: "absolute", left: `${v}%`, bottom: 0, transform: "translateX(-50%)", fontSize: 14, fontWeight: 800, color: C.muted }}>
+            {l}
+          </span>
+        ))}
+        <span style={{ position: "absolute", left: pctX(tt.target!), top: 22, width: 3, height: 142, marginLeft: -1.5, background: C.verm }} />
+        <span className="label" style={{ position: "absolute", left: pctX(tt.target!), top: 0, transform: "translateX(-50%)", whiteSpace: "nowrap", fontSize: 13, letterSpacing: "0.08em", color: C.vermDark }}>
+          TARGET {fmt1(tt.target!)}
+        </span>
+        <span style={{ position: "absolute", left: pctX(tt.average!), top: 22, width: 0, height: 142, marginLeft: -1, borderLeft: `3px dashed ${C.ink}` }} />
+        <span className="label" style={{ position: "absolute", left: pctX(tt.average!), bottom: 0, transform: "translateX(-50%)", whiteSpace: "nowrap", padding: "0 6px", background: C.paper2, fontSize: 13, letterSpacing: "0.08em" }}>
+          AVG {fmt1(tt.average!)}
+        </span>
+        {picks.map((p, k) => {
+          const team = teams.find((t) => t.id === p.teamId);
+          const up = k % 2 === 0;
+          const ring = tt.closest.includes(p.teamId) ? `0 0 0 4px ${C.paper2}, 0 0 0 7px ${C.verm}` : p.number === 0 ? `0 0 0 4px ${C.paper2}, 0 0 0 7px ${C.cobalt}` : undefined;
+          return (
+            <span key={p.teamId}>
+              <span className="mono" style={{ position: "absolute", left: pctX(p.number!), top: up ? 24 : 144, transform: "translateX(-50%)", fontSize: 15, fontWeight: 800 }}>
+                {p.number}
+              </span>
+              <span className="gte-drop" title={`${team?.name}: ${p.number}`} style={{ position: "absolute", left: pctX(p.number!), top: up ? 46 : 104, marginLeft: -18, animationDelay: `${0.1 * k}s` }}>
+                <Token team={team} index={k} size={36} radius={10} shadow={ring} />
+              </span>
+            </span>
+          );
+        })}
+      </div>
+    </figure>
+  );
+}
+
+export function HostReveal({ q, results, teams }: { q: Question; results: Results; teams: Team[] }) {
+  const r = results.reveal;
+  if (!r) return null;
+  const rows = [...r.rows].sort((a, b) => b.points - a.points);
+  const team = (id: string) => teams.find((t) => t.id === id);
+  const tIndex = (id: string) => teams.findIndex((t) => t.id === id);
+  const compact = rows.length > 7;
+  return (
+    <>
+      <div style={{ position: "absolute", left: 56, top: 108, width: 800, display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span className="mono" style={{ padding: "4px 12px", borderRadius: 10, background: C.ink, color: C.paper, fontSize: 22, fontWeight: 800 }}>
+            {q.code}
+          </span>
+          <span className="label" style={{ fontSize: 18, letterSpacing: "0.12em", color: C.muted }}>
+            {q.title}
+          </span>
+          <span className="mono gte-stamp" style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 32, padding: "0 12px", marginLeft: 4, borderRadius: 999, background: C.cobalt, color: C.paper, fontSize: 14, fontWeight: 800, letterSpacing: "0.12em" }}>
+            <I.check size={15} />
+            ANSWER
+          </span>
+        </div>
+        <p className="serif gte-drop" style={{ margin: "16px 0 0", fontSize: 58, lineHeight: 1.02, letterSpacing: "-0.01em", textWrap: "balance" }}>
+          {r.answer}
+        </p>
+        <p style={{ margin: "18px 0 0", fontSize: r.insight.length > 330 ? 21 : 24, lineHeight: 1.38, fontWeight: 500, color: C.ink2, textWrap: "pretty" }}>{r.insight}</p>
+        {r.twoThirds && r.twoThirds.target !== null && <NumberLine r={r} teams={teams} />}
+        {results.table && (
+          <div style={{ marginTop: 22 }}>
+            <SurgeonTable table={results.table} />
+          </div>
+        )}
+        {r.pairs && r.pairs.length > 0 && (
+          <div className="card gte-pop" style={{ marginTop: 22, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <span className="label" style={{ fontSize: 14, color: C.muted }}>
+              Just for fun: if teams were paired up
+            </span>
+            {r.pairs.map((p) => (
+              <div key={p.a} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 21, fontWeight: 700 }}>
+                <Token team={team(p.a)} index={tIndex(p.a)} size={30} radius={8} />
+                <span>{p.aChoice ? "Defect" : "Cooperate"}</span>
+                <span className="mono" style={{ fontWeight: 800 }}>
+                  {p.aPts} : {p.bPts}
+                </span>
+                <span>{p.bChoice ? "Defect" : "Cooperate"}</span>
+                <Token team={team(p.b)} index={tIndex(p.b)} size={30} radius={8} />
+              </div>
+            ))}
+          </div>
+        )}
+        {q.kind === "mcq" && !results.table && !r.pairs?.length && (
+          <ol style={{ margin: "22px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+            {q.choices.map((c, i) => {
+              const ok = r.correct.includes(i);
+              return (
+                <li key={c} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 14px 8px 8px", borderRadius: 14, border: ok ? `2.5px solid ${C.ink}` : `2px dashed ${C.faint}`, background: ok ? C.cobalt : "transparent", color: ok ? C.paper : C.muted, fontSize: 20, fontWeight: 700 }}>
+                  <span className="mono" style={{ width: 34, height: 34, display: "grid", placeItems: "center", borderRadius: 9, background: ok ? C.paper : C.line, color: C.ink, fontSize: 17, fontWeight: 800 }}>
+                    {LETTERS[i]}
+                  </span>
+                  {c}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
+
+      <section style={{ position: "absolute", left: 904, right: 56, top: 108, display: "flex", flexDirection: "column", gap: 14 }}>
+        <h2 className="label" style={{ margin: 0, fontSize: 18 }}>
+          Points this question
+        </h2>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, background: C.paper2, border: `2.5px solid ${C.ink}`, borderRadius: 18, overflow: "hidden", boxShadow: `5px 5px 0 ${C.ink}` }}>
+          <thead>
+            <tr className="mono" style={{ background: C.ink, color: C.paper, fontSize: 13, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+              <th scope="col" style={{ padding: "13px 16px", textAlign: "left" }}>
+                Team
+              </th>
+              <th scope="col" style={{ padding: "13px 8px", textAlign: "right" }}>
+                Pick
+              </th>
+              <th scope="col" style={{ padding: "13px 8px", textAlign: "center" }}>
+                Correct
+              </th>
+              <th scope="col" style={{ padding: "13px 8px", textAlign: "right" }}>
+                Avg vote
+              </th>
+              <th scope="col" style={{ padding: "13px 16px", textAlign: "right" }}>
+                Points
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => {
+              const t = team(row.teamId);
+              const picked = q.kind === "number" ? row.number : row.choice;
+              const pick = picked === null ? "—" : q.kind === "number" ? String(row.number) : LETTERS[row.choice!];
+              const reason = q.id === "2a" && row.correct ? (row.number === 0 ? "picked 0" : "closest") : undefined;
+              const td = { borderTop: `2px solid ${C.line}` };
+              return (
+                <tr key={row.teamId} className="gte-rowin" style={{ background: i === 0 ? "#FFF6D6" : "transparent", animationDelay: `${0.06 * i}s` }}>
+                  <th scope="row" style={{ ...td, height: compact ? 54 : 70, padding: "0 8px 0 12px", textAlign: "left", fontWeight: 800 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <Token team={t} index={tIndex(row.teamId)} size={36} radius={10} />
+                      <span style={{ maxWidth: 200, fontSize: 19, lineHeight: 1.1, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{t?.name}</span>
+                    </span>
+                  </th>
+                  <td className="mono" style={{ ...td, padding: "0 8px", textAlign: "right", fontSize: 24, fontWeight: 800, color: picked === null ? C.muted : C.ink }}>
+                    {pick}
+                  </td>
+                  <td style={{ ...td, padding: "0 8px", textAlign: "center" }}>
+                    {row.correct ? (
+                      <CorrectStamp reason={reason} />
+                    ) : picked === null ? (
+                      <span className="mono" style={{ fontSize: 22, fontWeight: 800, color: C.muted }}>
+                        —
+                      </span>
+                    ) : (
+                      <span role="img" aria-label="not correct" style={{ display: "inline-grid", placeItems: "center", width: 30, height: 30, borderRadius: 999, border: `2px dashed ${C.faint}`, color: C.muted }}>
+                        <I.x size={13} />
+                      </span>
+                    )}
+                  </td>
+                  <td className="mono" style={{ ...td, padding: "0 8px", textAlign: "right", fontSize: 22, fontWeight: 700, color: C.ink2 }}>
+                    {row.votes ? fmt1(row.voteAvg) : "—"}
+                  </td>
+                  <td className="mono" style={{ ...td, padding: "0 16px", textAlign: "right", fontSize: 30, fontWeight: 800, letterSpacing: "-0.03em" }}>
+                    {fmt1(row.points)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+    </>
+  );
+}
+
