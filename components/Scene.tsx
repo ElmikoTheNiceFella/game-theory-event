@@ -49,6 +49,7 @@ const SCENES: Record<SceneId, ReactNode> = {
   ),
   lab: (
     <Frame wall={["#134e4a", "#0f2f2e"]} floor="#1f2937">
+      <g transform="translate(470 -40)">
       <rect x={120} y={160} width={420} height={260} rx={12} fill="#0b1f1e" stroke="#5eead4" strokeWidth={6} />
       {Array.from({ length: 9 }).map((_, i) => (
         <g key={i}>
@@ -60,6 +61,7 @@ const SCENES: Record<SceneId, ReactNode> = {
       <text x={330} y={400} textAnchor="middle" fontSize={34} fill="#99f6e4" fontWeight={700}>
         MATCH: 1 in 1,000,000
       </text>
+      </g>
       <rect x={1000} y={520} width={480} height={200} fill="#334155" />
       <rect x={980} y={500} width={520} height={24} fill="#64748b" />
       {[1060, 1140, 1220].map((x, i) => (
@@ -73,24 +75,24 @@ const SCENES: Record<SceneId, ReactNode> = {
     <Frame wall={["#e0f2fe", "#bae6fd"]} floor="#94a3b8">
       <rect x={1080} y={140} width={360} height={260} fill="#7dd3fc" stroke="#f8fafc" strokeWidth={14} />
       <line x1={1260} x2={1260} y1={140} y2={400} stroke="#f8fafc" strokeWidth={10} />
-      <rect x={140} y={180} width={380} height={260} rx={10} fill="#ffffff" stroke="#0ea5e9" strokeWidth={6} />
-      <text x={170} y={250} fontSize={40} fontWeight={800} fill="#0369a1">Surgeon A — 95%</text>
-      <text x={170} y={330} fontSize={40} fontWeight={800} fill="#0369a1">Surgeon B — 90%</text>
-      <text x={170} y={400} fontSize={28} fill="#64748b">overall success</text>
+      <rect x={560} y={200} width={480} height={260} rx={10} fill="#ffffff" stroke="#0ea5e9" strokeWidth={6} />
+      <text x={600} y={270} fontSize={44} fontWeight={800} fill="#0369a1">Surgeon A — 95%</text>
+      <text x={600} y={350} fontSize={44} fontWeight={800} fill="#0369a1">Surgeon B — 90%</text>
+      <text x={600} y={420} fontSize={28} fill="#64748b">overall success</text>
       <rect x={1040} y={560} width={420} height={70} rx={14} fill="#f8fafc" />
       <rect x={1040} y={620} width={420} height={30} fill="#cbd5e1" />
       <rect x={1060} y={650} width={14} height={70} fill="#64748b" />
       <rect x={1426} y={650} width={14} height={70} fill="#64748b" />
-      <path d="M760 120 h60 v-60 h60 v60 h60 v60 h-60 v60 h-60 v-60 h-60 Z" fill="#ef4444" />
+      <path d="M770 70 h40 v-40 h40 v40 h40 v40 h-40 v40 h-40 v-40 h-40 Z" fill="#ef4444" />
     </Frame>
   ),
   classroom: (
     <Frame wall={["#fef3c7", "#fde68a"]} floor="#a16207">
-      <rect x={300} y={110} width={1000} height={380} rx={12} fill="#14532d" stroke="#854d0e" strokeWidth={18} />
-      <text x={800} y={260} textAnchor="middle" fontSize={80} fill="#f0fdf4" fontWeight={700} fontFamily="cursive">
+      <rect x={300} y={50} width={1000} height={290} rx={12} fill="#14532d" stroke="#854d0e" strokeWidth={18} />
+      <text x={800} y={160} textAnchor="middle" fontSize={80} fill="#f0fdf4" fontWeight={700} fontFamily="cursive">
         target = ⅔ × average
       </text>
-      <text x={800} y={380} textAnchor="middle" fontSize={56} fill="#bbf7d0" fontFamily="cursive">
+      <text x={800} y={250} textAnchor="middle" fontSize={48} fill="#bbf7d0" fontFamily="cursive">
         pick 0 … 100
       </text>
       {[140, 1340].map((x) => (
@@ -107,11 +109,11 @@ const SCENES: Record<SceneId, ReactNode> = {
       <rect x={0} y={0} width={800} height={FLOOR} fill="rgba(220,38,38,.18)" />
       <rect x={800} y={0} width={800} height={FLOOR} fill="rgba(37,99,235,.18)" />
       <g fontWeight={900} fontSize={40} textAnchor="middle">
-        <rect x={560} y={140} width={480} height={300} rx={16} fill="#0b1222" stroke="#e2e8f0" strokeWidth={4} />
-        <text x={800} y={200} fill="#e2e8f0">C</text>
-        <text x={800} y={260} fill="#e2e8f0" fontSize={28}>3 / 3 · 0 / 5</text>
-        <text x={800} y={330} fill="#e2e8f0">D</text>
-        <text x={800} y={390} fill="#e2e8f0" fontSize={28}>5 / 0 · 1 / 1</text>
+        <rect x={560} y={60} width={480} height={220} rx={16} fill="#0b1222" stroke="#e2e8f0" strokeWidth={4} />
+        <text x={800} y={108} fill="#e2e8f0">COOPERATE</text>
+        <text x={800} y={150} fill="#e2e8f0" fontSize={28}>3 / 3 · 0 / 5</text>
+        <text x={800} y={210} fill="#e2e8f0">DEFECT</text>
+        <text x={800} y={252} fill="#e2e8f0" fontSize={28}>5 / 0 · 1 / 1</text>
       </g>
       <rect x={180} y={560} width={220} height={160} rx={12} fill="#7f1d1d" />
       <rect x={1200} y={560} width={220} height={160} rx={12} fill="#1e3a8a" />
@@ -127,8 +129,8 @@ const SCENES: Record<SceneId, ReactNode> = {
         <rect key={i} x={i * 200 + 20} y={60} width={160} height={560} fill="rgba(255,255,255,.04)" />
       ))}
       <rect x={560} y={380} width={480} height={340} fill="#92400e" stroke="#b45309" strokeWidth={8} />
-      <circle cx={800} cy={210} r={90} fill="#facc15" opacity={0.85} />
-      <path d="M800 150 v120 M740 180 h120 M740 180 l-25 50 h50 Z M860 180 l-25 50 h50 Z" stroke="#78350f" strokeWidth={8} fill="#78350f" />
+      <circle cx={800} cy={130} r={85} fill="#facc15" opacity={0.85} />
+      <path d="M800 70 v120 M740 100 h120 M740 100 l-25 50 h50 Z M860 100 l-25 50 h50 Z" stroke="#78350f" strokeWidth={8} fill="#78350f" />
       <rect x={100} y={600} width={340} height={120} fill="#7c2d12" />
       <rect x={1160} y={600} width={340} height={120} fill="#7c2d12" />
     </Frame>

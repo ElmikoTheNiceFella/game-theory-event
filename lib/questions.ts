@@ -108,7 +108,7 @@ export const QUESTIONS: Question[] = [
     topic: "Counterintuitive Probability",
     scene: "hospital",
     cast: {
-      sara: { name: "Sara", skin: SKIN[1], hair: "#3f2a1d", hairStyle: "hijab", top: "#a855f7", bottom: "#1e293b" },
+      sara: { name: "Sara", skin: SKIN[1], hair: "#4338ca", hairStyle: "hijab", top: "#a855f7", bottom: "#1e293b" },
       hadi: { name: "Nurse Hadi", skin: SKIN[4], hair: "#0c0a09", hairStyle: "bald", top: "#06b6d4", bottom: "#06b6d4", accessory: "cap" },
     },
     dialogue: [
@@ -163,7 +163,7 @@ export const QUESTIONS: Question[] = [
     scene: "arena",
     cast: {
       dana: { name: "Dana", skin: SKIN[1], hair: "#7f1d1d", hairStyle: "long", top: "#dc2626", bottom: "#1f2937" },
-      rami: { name: "Rami", skin: SKIN[2], hair: "#0f172a", hairStyle: "short", top: "#111827", bottom: "#111827", accessory: "mic" },
+      rami: { name: "Rami", skin: SKIN[2], hair: "#0f172a", hairStyle: "short", top: "#facc15", bottom: "#374151", accessory: "mic" },
       zaid: { name: "Zaid", skin: SKIN[3], hair: "#1e1b4b", hairStyle: "short", top: "#2563eb", bottom: "#1f2937" },
     },
     dialogue: [
@@ -222,7 +222,7 @@ export const QUESTIONS: Question[] = [
     scene: "airfield",
     cast: {
       tariq: { name: "Capt. Tariq", skin: SKIN[3], hair: "#1c1917", hairStyle: "short", top: "#4d7c0f", bottom: "#3f6212", accessory: "cap" },
-      rana: { name: "Eng. Rana", skin: SKIN[0], hair: "#292524", hairStyle: "hijab", top: "#0369a1", bottom: "#1e293b", accessory: "labcoat" },
+      rana: { name: "Eng. Rana", skin: SKIN[0], hair: "#64748b", hairStyle: "hijab", top: "#0369a1", bottom: "#1e293b", accessory: "labcoat" },
     },
     dialogue: [
       { who: "tariq", text: "Our planes keep coming back shot up. We need more armor, but armor is heavy.", pose: "point" },

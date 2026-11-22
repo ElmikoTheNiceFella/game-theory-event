@@ -66,13 +66,13 @@ export function DialogueStage({ q, index, onNext, onPrev }: { q: Question; index
   return (
     <div className="relative h-full w-full overflow-hidden select-none">
       <Scene id={q.scene} />
-      <div className="absolute inset-x-0 bottom-[20%] flex h-[58%] items-end justify-around px-[8%]">
+      <div className="absolute inset-x-0 bottom-[20%] flex h-[52%] items-end justify-between px-[4%]">
         {keys.map((k, n) => (
           <motion.div
             key={k}
             className="h-full"
             initial={{ x: n < keys.length / 2 ? -600 : 600, opacity: 0 }}
-            animate={{ x: 0, opacity: line.who === k || line.who === "narrator" ? 1 : 0.78, scale: line.who === k ? 1.04 : 1 }}
+            animate={{ x: 0, opacity: 1, filter: line.who === k || line.who === "narrator" ? "brightness(1)" : "brightness(0.7)", scale: line.who === k ? 1.04 : 1 }}
             transition={{ type: "spring", stiffness: 90, damping: 16, delay: n * 0.15 }}
           >
             <Character look={q.cast[k]} pose={poses[k] ?? "idle"} speaking={line.who === k} />
