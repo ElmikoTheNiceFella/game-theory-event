@@ -71,7 +71,7 @@ function Login({ onOk }: { onOk: () => void }) {
 }
 
 function Host() {
-  const { game, teams, participants } = useGame();
+  const { game, teams, participants, reload } = useGame();
   const remaining = useRemaining(game);
   const results = useResults(game);
   const [toast, setToast] = useState("");
@@ -86,7 +86,8 @@ function Host() {
     setBusy(true);
     try {
       const r = await fn();
-      setToast(r.error ?? "");
+      setToast(r.error && r.error !== "stale" ? r.error : ""); // stale = double press / realtime lag; harmless
+      await reload();
     } catch (e) {
       setToast(e instanceof Error ? e.message : "Something went wrong");
     } finally {
@@ -125,6 +126,7 @@ function Host() {
   const P = game.phase;
 
   const members = (teamId: string) => participants.filter((p) => p.team_id === teamId);
+  const active = teams.filter((t) => members(t.id).length > 0); // empty teams don't answer, present or vote
 
   let screen: React.ReactNode = null;
   switch (game.stage) {
@@ -195,7 +197,7 @@ function Host() {
         <div className="mx-auto flex h-full max-w-6xl items-center gap-10 p-12">
           <div className="flex-1">
             <QuestionSummary q={q} big />
-            {results?.table && (
+            {game.show_extra && results?.table && (
               <div className="mt-6">
                 <SurgeonTableView table={results.table} />
               </div>
@@ -204,11 +206,11 @@ function Host() {
           <div className="flex w-72 flex-col items-center gap-6">
             <Timer ms={remaining} total={ANSWER_SECONDS} paused={paused} size={220} />
             <div className="text-center text-4xl font-black">
-              {game.submitted_team_ids.length} / {teams.length}
+              {game.submitted_team_ids.length} / {active.length}
               <div className="text-lg font-normal text-white/60">teams submitted</div>
             </div>
             <div className="flex flex-wrap justify-center gap-2">
-              {teams.map((t) => (
+              {active.map((t) => (
                 <TeamChip key={t.id} team={t} dim={!game.submitted_team_ids.includes(t.id)} />
               ))}
             </div>
@@ -225,7 +227,7 @@ function Host() {
           </div>
           <Timer ms={remaining} total={PRESENT_SECONDS} paused={paused} size={260} />
           <div className="text-xl text-white/50">
-            {game.presented_team_ids.length} / {teams.length} teams
+            {game.presented_team_ids.length} / {active.length} teams
           </div>
         </div>
       );
@@ -239,7 +241,7 @@ function Host() {
           </div>
           <Timer ms={remaining} total={VOTE_SECONDS} paused={paused} size={200} />
           <div className="flex flex-wrap justify-center gap-2">
-            {teams
+            {active
               .filter((t) => t.id !== game.presenting_team_id)
               .map((t) => (
                 <TeamChip key={t.id} team={t} dim={!game.voted_team_ids.includes(t.id)} />

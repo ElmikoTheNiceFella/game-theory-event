@@ -43,9 +43,24 @@ async function getTeams(): Promise<Team[]> {
   return data as Team[];
 }
 
-async function getParticipant(pid: string) {
-  if (!UUID.test(pid)) return null;
-  const { data } = await db.from("participants").select("*").eq("id", pid).maybeSingle();
+/** Phones hold a secret token; the public participant id (readable by everyone) is its hash. */
+function publicId(secret: string) {
+  if (!UUID.test(secret)) return null;
+  const h = createHash("sha256").update(secret).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+/** Teams with at least one member: only these present, and only these are waited for. */
+async function activeTeamIds(): Promise<string[]> {
+  const [teams, { data }] = await Promise.all([getTeams(), db.from("participants").select("team_id").not("team_id", "is", null)]);
+  const used = new Set((data ?? []).map((p) => p.team_id));
+  return teams.map((t) => t.id).filter((id) => used.has(id));
+}
+
+async function getParticipant(secret: string) {
+  const id = publicId(secret);
+  if (!id) return null;
+  const { data } = await db.from("participants").select("*").eq("id", id).maybeSingle();
   return data as { id: string; name: string; team_id: string | null } | null;
 }
 
@@ -75,7 +90,7 @@ function revealPatch(g: Game): Partial<Game> {
 }
 
 async function nextPresenterPatch(g: Game): Promise<Partial<Game>> {
-  const left = (await getTeams()).map((t) => t.id).filter((id) => !g.presented_team_ids.includes(id));
+  const left = (await activeTeamIds()).filter((id) => !g.presented_team_ids.includes(id));
   if (!left.length) return revealPatch(g);
   const t = left[Math.floor(Math.random() * left.length)];
   return {
@@ -98,6 +113,8 @@ async function advanceFrom(phase: number) {
 }
 
 const fail = (error: string): Res => ({ error });
+/** The game moved on since the caller read it (double press / realtime lag). Host ignores this. */
+const STALE: Res = { error: "stale" };
 
 /* ---------------- organizer ---------------- */
 
@@ -153,7 +170,7 @@ const SIMPLE: Partial<Record<Stage, Stage[]>> = {
 export async function goTo(phase: number, to: Stage): Promise<Res> {
   await requireOrganizer();
   const g = await getGame();
-  if (g.phase !== phase) return fail("Game moved on, try again");
+  if (g.phase !== phase) return STALE;
   const allowed = SIMPLE[g.stage]?.includes(to) || (to === "select" && g.stage !== "select" && g.stage !== "lobby");
   if (!allowed) return fail(`Can't go from ${g.stage} to ${to}`);
   if (to === "select" && g.question_id && !g.finished_question_ids.includes(g.question_id)) {
@@ -169,7 +186,8 @@ export async function goTo(phase: number, to: Stage): Promise<Res> {
 export async function startQuestion(phase: number, qid: string): Promise<Res> {
   await requireOrganizer();
   const g = await getGame();
-  if (g.phase !== phase || g.stage !== "select") return fail("Not on question select");
+  if (g.phase !== phase) return STALE;
+  if (g.stage !== "select") return fail("Not on question select");
   if (!questionById(qid)) return fail("Unknown question");
   if (g.finished_question_ids.includes(qid)) return fail("Already played");
   await db.from("submissions").delete().eq("question_id", qid);
@@ -193,7 +211,8 @@ export async function dialogueStep(phase: number, delta: 1 | -1): Promise<Res> {
   await requireOrganizer();
   const g = await getGame();
   const q = questionById(g.question_id);
-  if (g.phase !== phase || g.stage !== "dialogue" || !q) return fail("Not in dialogue");
+  if (g.phase !== phase) return STALE;
+  if (g.stage !== "dialogue" || !q) return fail("Not in dialogue");
   const i = g.dialogue_index + delta;
   if (i < 0) return { ok: true };
   if (i >= q.dialogue.length)
@@ -212,7 +231,8 @@ export async function advance(phase: number): Promise<Res> {
 export async function skipToReveal(phase: number): Promise<Res> {
   await requireOrganizer();
   const g = await getGame();
-  if (g.phase !== phase || !["answering", "presenting", "voting"].includes(g.stage)) return fail("Nothing to skip");
+  if (g.phase !== phase) return STALE;
+  if (!["answering", "presenting", "voting"].includes(g.stage)) return fail("Nothing to skip");
   await transition(phase, revealPatch(g));
   return { ok: true };
 }
@@ -220,7 +240,7 @@ export async function skipToReveal(phase: number): Promise<Res> {
 export async function addTime(phase: number, seconds = 60): Promise<Res> {
   await requireOrganizer();
   const g = await getGame();
-  if (g.phase !== phase) return fail("Game moved on");
+  if (g.phase !== phase) return STALE;
   if (g.paused_remaining_ms !== null)
     await transition(phase, { paused_remaining_ms: g.paused_remaining_ms + seconds * 1000 });
   else if (g.phase_ends_at)
@@ -231,7 +251,7 @@ export async function addTime(phase: number, seconds = 60): Promise<Res> {
 export async function togglePause(phase: number): Promise<Res> {
   await requireOrganizer();
   const g = await getGame();
-  if (g.phase !== phase) return fail("Game moved on");
+  if (g.phase !== phase) return STALE;
   if (g.paused_remaining_ms !== null)
     await transition(phase, { phase_ends_at: new Date(Date.now() + g.paused_remaining_ms).toISOString(), paused_remaining_ms: null });
   else if (g.phase_ends_at)
@@ -277,11 +297,17 @@ export async function serverNow() {
   return Date.now();
 }
 
-export async function joinEvent(pid: string, name: string): Promise<Res> {
-  if (!UUID.test(pid)) return fail("Bad id");
+/** Public id for this device's secret, so the phone can find itself in the participant list. */
+export async function myId(secret: string) {
+  return publicId(secret);
+}
+
+export async function joinEvent(secret: string, name: string): Promise<Res> {
+  const id = publicId(secret);
+  if (!id) return fail("Bad id");
   const n = String(name).trim().slice(0, 24);
   if (!n) return fail("Enter your name");
-  const { error } = await db.from("participants").upsert({ id: pid, name: n });
+  const { error } = await db.from("participants").upsert({ id, name: n });
   return error ? fail(error.message) : { ok: true };
 }
 
@@ -293,7 +319,7 @@ export async function setTeam(pid: string, teamId: string | null): Promise<Res> 
   if (p.team_id && (g.stage === "presenting" || g.stage === "voting"))
     return fail("Wait until the presentation is over to switch teams");
   if (teamId && !(await getTeams()).some((t) => t.id === teamId)) return fail("Team not found");
-  const { error } = await db.from("participants").update({ team_id: teamId }).eq("id", pid);
+  const { error } = await db.from("participants").update({ team_id: teamId }).eq("id", p.id);
   return error ? fail(error.message) : { ok: true };
 }
 
@@ -340,8 +366,8 @@ export async function submitAnswer(
 
   if (explanation) {
     await db.rpc("mark_submitted", { t: p.team_id });
-    const [g2, teams] = await Promise.all([getGame(), getTeams()]);
-    if (g2.stage === "answering" && teams.every((t) => g2.submitted_team_ids.includes(t.id))) await advanceFrom(g2.phase);
+    const [g2, active] = await Promise.all([getGame(), activeTeamIds()]);
+    if (g2.stage === "answering" && active.every((id) => g2.submitted_team_ids.includes(id))) await advanceFrom(g2.phase);
   }
   return { ok: true };
 }
@@ -379,9 +405,9 @@ export async function castVote(pid: string, score: number): Promise<Res> {
   });
   if (error) return fail(error.message);
   await db.rpc("mark_voted", { t: p.team_id });
-  const [g2, teams] = await Promise.all([getGame(), getTeams()]);
-  const voters = teams.filter((t) => t.id !== g2.presenting_team_id);
-  if (g2.stage === "voting" && voters.every((t) => g2.voted_team_ids.includes(t.id))) await advanceFrom(g2.phase);
+  const [g2, active] = await Promise.all([getGame(), activeTeamIds()]);
+  const voters = active.filter((id) => id !== g2.presenting_team_id);
+  if (g2.stage === "voting" && voters.every((id) => g2.voted_team_ids.includes(id))) await advanceFrom(g2.phase);
   return { ok: true };
 }
 

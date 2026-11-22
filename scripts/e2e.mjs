@@ -41,11 +41,18 @@ ok(await call("organizerLogin", [process.env.ORGANIZER_PIN]), "login");
 // fresh state
 ok(await call("resetEvent"), "reset");
 for (const t of (await admin.from("teams").select("id")).data) await call("removeTeam", [t.id]);
-for (const n of ["Alpha", "Bravo", "Charlie"]) ok(await call("addTeam", [n]), "add team " + n);
+for (const n of ["Alpha", "Bravo", "Charlie", "Delta (empty)"]) ok(await call("addTeam", [n]), "add team " + n);
 const teams = (await admin.from("teams").select("*").order("created_at")).data;
-const [A, B, C] = teams.map((t) => t.id);
+const [A, B, C, D] = teams.map((t) => t.id);
 const P = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
 for (let i = 0; i < 3; i++) { ok(await call("joinEvent", [P[i], "Player" + i]), "join " + i); ok(await call("setTeam", [P[i], teams[i].id]), "team " + i); }
+
+// public participant ids (readable by any phone) must not work as credentials
+const publicIds = (await anon.from("participants").select("id")).data.map((x) => x.id);
+assert.equal(publicIds.length, 3);
+assert.ok(!publicIds.some((id) => P.includes(id)), "secrets never stored as ids");
+assert.ok((await call("setTeam", [publicIds[0], B])).error, "public id rejected");
+console.log("✓ public participant ids can't be used to act as someone else");
 
 let g = await G();
 ok(await call("goTo", [g.phase, "rules"]), "→ rules");
@@ -55,7 +62,7 @@ g = await G(); ok(await call("startQuestion", [g.phase, "2a"]), "start 2A");
 const stale = g.phase;
 g = await G(); assert.equal(g.stage, "dialogue");
 ok(await call("dialogueStep", [g.phase, 1]), "dialogue next");
-const r = await call("dialogueStep", [stale, 1]); assert.ok(r.error, "stale phase rejected"); console.log("✓ stale phase rejected");
+const r = await call("dialogueStep", [stale, 1]); assert.equal(r.error, "stale"); console.log("✓ stale phase rejected");
 while ((g = await G()).stage === "dialogue") await call("dialogueStep", [g.phase, 1]);
 assert.equal(g.stage, "answering"); console.log("✓ dialogue → answering");
 assert.ok((await call("submitAnswer", [P[0], { number: 0, explanation: "" }])).error, "explanation required"); console.log("✓ explanation required");
@@ -63,7 +70,7 @@ assert.ok((await call("submitAnswer", [P[0], { number: 101, explanation: "x" }])
 ok(await call("submitAnswer", [P[0], { number: 0, explanation: "nash" }]), "A submits 0");
 ok(await call("submitAnswer", [P[1], { number: 30, explanation: "level 1" }]), "B submits 30");
 ok(await call("submitAnswer", [P[2], { number: 60, explanation: "yolo" }]), "C submits 60");
-g = await G(); assert.equal(g.stage, "presenting", "auto-close after all submitted"); console.log("✓ auto-advanced to presenting");
+g = await G(); assert.equal(g.stage, "presenting", "auto-close after all submitted"); console.log("✓ auto-advanced to presenting (empty team not waited for)");
 
 // phones can't read private tables even when they have rows
 assert.deepEqual((await anon.from("submissions").select("*")).data, []);
@@ -80,9 +87,12 @@ while ((g = await G()).stage !== "reveal") {
     assert.ok((await call("castVote", [own, 10])).error, "self vote blocked");
   } else if (g.stage === "voting") {
     for (const p of P) if (p !== P[teams.findIndex((t) => t.id === g.presenting_team_id)]) await call("castVote", [p, 5]);
+    // a phone trying to vote using someone else's public id is rejected
+    assert.ok((await call("castVote", [publicIds[0], 0])).error);
   } else throw new Error("unexpected stage " + g.stage);
 }
-assert.equal(new Set(order).size, 3); console.log("✓ every team presented once, then reveal; self-votes & switching blocked");
+assert.equal(new Set(order).size, 3); assert.ok(!order.includes(D), "empty team never presents");
+console.log("✓ every non-empty team presented once, then reveal; self-votes & switching blocked");
 assert.deepEqual((await anon.from("votes").select("*")).data, []); console.log("✓ RLS hides votes from phones");
 
 const res = await call("getResults");
@@ -118,5 +128,5 @@ g = await G(); ok(await call("goTo", [g.phase, "final"]), "→ final");
 // leave clean
 ok(await call("resetEvent"), "reset");
 for (const t of teams) await call("removeTeam", [t.id]);
-await admin.from("participants").delete().in("id", P);
+await admin.from("participants").delete().in("id", publicIds);
 console.log("\nALL E2E CHECKS PASSED");

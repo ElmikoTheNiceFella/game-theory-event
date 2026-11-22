@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { castVote, getMySubmission, joinEvent, setTeam, submitAnswer, type Results } from "./actions";
+import { castVote, getMySubmission, joinEvent, myId, setTeam, submitAnswer, type Results } from "./actions";
 import { useGame, useRemaining, useResults } from "@/lib/useGame";
 import { questionById, RULES, type Question } from "@/lib/questions";
 import { ANSWER_SECONDS, PRESENT_SECONDS, VOTE_SECONDS, type Game, type Team } from "@/lib/types";
@@ -29,7 +29,8 @@ const uuid = () =>
     (+c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (+c / 4)))).toString(16),
   );
 
-// Stable per-device identity (cached so it stays stable even if storage is blocked)
+// Per-device SECRET token (cached so it stays stable even if storage is blocked).
+// Never compare it to participant ids: the public id is its server-side hash (see myId).
 let cachedPid: string | null = null;
 const getPid = () => {
   if (!cachedPid) {
@@ -46,13 +47,18 @@ const btn = "rounded-2xl px-5 py-3 font-bold transition active:scale-95 disabled
 export default function ParticipantPage() {
   const { game, teams, participants } = useGame();
   const pid = useSyncExternalStore(noSubscribe, getPid, () => null);
+  const [publicId, setPublicId] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [err, setErr] = useState("");
 
-  const me = participants.find((p) => p.id === pid);
+  useEffect(() => {
+    if (pid) myId(pid).then(setPublicId);
+  }, [pid]);
+
+  const me = participants.find((p) => p.id === publicId);
   const myTeam = teams.find((t) => t.id === me?.team_id) ?? null;
 
-  if (!game || !pid) return <Center>Loading…</Center>;
+  if (!game || !pid || !publicId) return <Center>Loading…</Center>;
   if (!me) return <Join pid={pid} />;
 
   const pickTeam = async (teamId: string | null) => {
@@ -265,6 +271,7 @@ function AnswerForm({ q, pid, submitted }: { q: Question; pid: string; submitted
     const s = await getMySubmission(pid);
     setTable(s.table);
     setLocked(!!s.submission?.locked);
+    if (s.submission) setChoice(s.submission.choice); // a teammate may have locked a different pick first
   };
 
   const needsLock = q.lockChoice && !locked;

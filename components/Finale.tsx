@@ -15,9 +15,10 @@ const PLACES = [
 export function Finale({ standings, onDone }: { standings: Standing[]; onDone?: () => void }) {
   const [step, setStep] = useState(0); // number of places revealed
   const top = standings.slice(0, 3); // shortcut: ties for a podium spot are broken by list order
+  const places = PLACES.filter((p) => p.rank <= top.length); // fewer than 3 teams: skip the missing ranks
 
   useEffect(() => {
-    const timers = PLACES.slice(0, top.length).map((p, i) =>
+    const timers = places.map((p, i) =>
       setTimeout(() => {
         setStep(i + 1);
         if (p.rank === 1) {
@@ -30,13 +31,13 @@ export function Finale({ standings, onDone }: { standings: Standing[]; onDone?: 
         } else confetti({ particleCount: 40, spread: 60, origin: { y: 0.6 } });
       }, p.at),
     );
-    const done = setTimeout(() => onDone?.(), (PLACES[top.length - 1]?.at ?? 0) + 4500);
+    const done = setTimeout(() => onDone?.(), (places.at(-1)?.at ?? 0) + 4500);
     return () => [...timers, done].forEach(clearTimeout);
     // onDone deliberately omitted: parents re-render every tick and would restart the show
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [top.length]);
 
-  const nextUp = PLACES[step];
+  const nextUp = places[step];
   return (
     <div className="relative flex h-full w-full flex-col items-center justify-end overflow-hidden bg-[radial-gradient(ellipse_at_top,#4c1d95,#0b0820_70%)] pb-10">
       <AnimatePresence mode="wait">
@@ -54,12 +55,12 @@ export function Finale({ standings, onDone }: { standings: Standing[]; onDone?: 
         )}
       </AnimatePresence>
       <div className="flex h-[70%] w-full max-w-5xl items-end justify-center gap-6">
-        {PLACES.slice(0, top.length)
+        {places
           .slice()
           .sort((a, b) => a.order - b.order)
           .map((p) => {
             const s = top[p.rank - 1];
-            const shown = step >= PLACES.indexOf(p) + 1;
+            const shown = step >= places.indexOf(p) + 1;
             return (
               <div key={p.rank} className="flex h-full flex-1 flex-col items-center justify-end">
                 <AnimatePresence>
