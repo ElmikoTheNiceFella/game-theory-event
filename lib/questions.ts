@@ -252,8 +252,8 @@ export const QUESTIONS: Question[] = [
   {
     id: "voting",
     code: "∞",
-    title: "The Voting Game",
-    topic: "Game Theory of This Event",
+    title: "???", // kept secret until it is played
+    topic: "???",
     scene: "hall",
     cast: {
       reem: { name: "Reem", skin: SKIN[2], hair: "#3b0764", hairStyle: "long", top: "#7c3aed", bottom: "#1f2937" },

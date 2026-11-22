@@ -268,18 +268,21 @@ export function MiniRing({ ms, total, size = 52, width = 14, track = C.line }: {
 
 /* ---------------- projector chrome ---------------- */
 
-/** Fixed 1600×900 stage, scaled to fit the window (letterboxed in ink). */
 const subscribeResize = (cb: () => void) => {
   window.addEventListener("resize", cb);
   return () => window.removeEventListener("resize", cb);
 };
-const fitScale = () => Math.min(window.innerWidth / 1600, window.innerHeight / 900);
+const viewport = () => `${window.innerWidth}x${window.innerHeight}`;
 
+/** Design space is 1600×900; on other aspect ratios the stage grows wider or taller (no letterbox), and layouts anchored to the edges stretch with it. */
 export function Stage({ children }: { children: ReactNode }) {
-  const scale = useSyncExternalStore(subscribeResize, fitScale, () => 1);
+  const [vw, vh] = useSyncExternalStore(subscribeResize, viewport, () => "1600x900").split("x").map(Number);
+  const wide = vw / vh >= 16 / 9;
+  const w = wide ? (900 * vw) / vh : 1600;
+  const h = wide ? 900 : (1600 * vh) / vw;
   return (
-    <div style={{ position: "fixed", inset: 0, background: C.ink, display: "grid", placeItems: "center", overflow: "hidden" }}>
-      <div style={{ width: 1600, height: 900, flex: "none", position: "relative", overflow: "hidden", transform: `scale(${scale})`, transformOrigin: "center" }}>{children}</div>
+    <div style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
+      <div style={{ width: w, height: h, position: "absolute", left: 0, top: 0, overflow: "hidden", transform: `scale(${vh / h})`, transformOrigin: "0 0" }}>{children}</div>
     </div>
   );
 }
