@@ -75,7 +75,7 @@ export function Finale({ standings, onDone }: { standings: Standing[]; onDone?: 
                   )}
                 </AnimatePresence>
                 <motion.div
-                  className="flex w-full items-start justify-center rounded-t-2xl pt-4 text-7xl font-black text-white/90"
+                  className="flex w-full items-start justify-center overflow-hidden rounded-t-2xl pt-4 text-7xl font-black text-white/90"
                   style={{ background: shown ? s.color : "rgba(255,255,255,.1)" }}
                   initial={{ height: 0 }}
                   animate={{ height: shown ? p.height : "8%" }}
