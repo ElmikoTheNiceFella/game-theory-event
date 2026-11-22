@@ -111,6 +111,8 @@ npm install
 npm run dev        # http://localhost:3000 (participants), /host (organizer)
 npm test           # scoring unit tests
 npm run build
+# full backend flow over HTTP (DESTRUCTIVE: wipes teams/answers; never on event day)
+npx next start -p 3123 & E2E_CONFIRM=1 npm run e2e
 ```
 Deploy by importing the repo into Vercel and adding the environment variables.
 

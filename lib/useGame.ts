@@ -26,6 +26,8 @@ export function useGame() {
       .on("postgres_changes", { event: "*", schema: "public", table: "game" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "participants" }, load)
+      // changes only stream after "Subscribed to PostgreSQL"; refetch then to cover the gap
+      .on("system", {}, load)
       .subscribe((status) => {
         if (status === "SUBSCRIBED") load();
       });
