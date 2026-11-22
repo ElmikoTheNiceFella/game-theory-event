@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { castVote, getMySubmission, joinEvent, setTeam, submitAnswer, type Results } from "./actions";
 import { useGame, useRemaining, useResults } from "@/lib/useGame";
 import { questionById, RULES, type Question } from "@/lib/questions";
@@ -29,23 +29,25 @@ const uuid = () =>
     (+c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (+c / 4)))).toString(16),
   );
 
+// Stable per-device identity (cached so it stays stable even if storage is blocked)
+let cachedPid: string | null = null;
+const getPid = () => {
+  if (!cachedPid) {
+    cachedPid = store.get("gte_pid") ?? uuid();
+    store.set("gte_pid", cachedPid);
+  }
+  return cachedPid;
+};
+const noSubscribe = () => () => {};
+
 const card = "rounded-3xl bg-white/5 p-5";
 const btn = "rounded-2xl px-5 py-3 font-bold transition active:scale-95 disabled:opacity-40";
 
 export default function ParticipantPage() {
   const { game, teams, participants } = useGame();
-  const [pid, setPid] = useState<string | null>(null);
+  const pid = useSyncExternalStore(noSubscribe, getPid, () => null);
   const [picking, setPicking] = useState(false);
   const [err, setErr] = useState("");
-
-  useEffect(() => {
-    let id = store.get("gte_pid");
-    if (!id) {
-      id = uuid();
-      store.set("gte_pid", id);
-    }
-    setPid(id);
-  }, []);
 
   const me = participants.find((p) => p.id === pid);
   const myTeam = teams.find((t) => t.id === me?.team_id) ?? null;
@@ -201,7 +203,7 @@ function StageView({ game, teams, pid, myTeam }: { game: Game; teams: Team[]; pi
         <section className={`${card} space-y-4 text-center`}>
           <h2 className="text-3xl font-black">{mine ? "🎤 Your team is up! Stand up and explain your answer." : `${presenting?.name ?? "A team"} is presenting`}</h2>
           <Timer ms={remaining} total={PRESENT_SECONDS} paused={paused} />
-          {!mine && <p className="text-white/60">Listen closely. You'll vote next.</p>}
+          {!mine && <p className="text-white/60">Listen closely. You&apos;ll vote next.</p>}
         </section>
       );
     case "voting":

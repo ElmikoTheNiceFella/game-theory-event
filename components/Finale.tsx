@@ -32,7 +32,9 @@ export function Finale({ standings, onDone }: { standings: Standing[]; onDone?: 
     );
     const done = setTimeout(() => onDone?.(), (PLACES[top.length - 1]?.at ?? 0) + 4500);
     return () => [...timers, done].forEach(clearTimeout);
-  }, [top.length, onDone]);
+    // onDone deliberately omitted: parents re-render every tick and would restart the show
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [top.length]);
 
   const nextUp = PLACES[step];
   return (
