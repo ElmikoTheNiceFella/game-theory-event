@@ -24,3 +24,10 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes breathe { 50% { transform: translateY(-3px); } }
+@keyframes talk { 0%,100% { transform: translateY(0); } 25% { transform: translateY(-8px); } 60% { transform: translateY(-2px); } }
+@keyframes wave { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(-28deg); } }
+.anim-breathe { animation: breathe 3.2s ease-in-out infinite; }
+.anim-talk { animation: talk .9s ease-in-out infinite; }
+.anim-wave { animation: wave .7s ease-in-out infinite; }
