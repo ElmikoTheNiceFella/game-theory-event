@@ -453,9 +453,7 @@ function StageView({ game, teams, participants, matches, pid, me, myTeam, myInde
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <h1 style={{ ...h1(40), lineHeight: 0.98 }}>Other teams are voting on you…</h1>
-            <p className="serif" style={{ margin: 0, fontSize: 26, lineHeight: 1.2, color: C.ink2 }}>
-              Fingers crossed.
-            </p>
+            <Taunt />
           </div>
           <span style={{ fontSize: 15, color: C.muted }}>Your average shows up at the reveal.</span>
         </main>
@@ -493,6 +491,18 @@ function StageView({ game, teams, participants, matches, pid, me, myTeam, myInde
         </main>
       );
   }
+}
+
+const TAUNTS = ["Hope you have no beef with the audience.", "They're gonna cook you.", "Wrap it up."];
+
+/** Picked once per mount so it doesn't change on every re-render. */
+function Taunt() {
+  const [line] = useState(() => TAUNTS[Math.floor(Math.random() * TAUNTS.length)]);
+  return (
+    <p className="serif" style={{ margin: 0, fontSize: 26, lineHeight: 1.2, color: C.ink2 }}>
+      {line}
+    </p>
+  );
 }
 
 /** Answer timer strip: paper → marigold under half → vermilion in the last fifth. */
