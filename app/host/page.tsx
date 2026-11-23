@@ -600,7 +600,7 @@ function Rules() {
             </div>
           </RuleCard>
           <RuleCard n={6} delay={0.4}>
-            <p style={{ margin: 0 }}>Points add up across all questions. {b("Highest total wins!")}</p>
+            <p style={{ margin: 0 }}>Points add up across all questions (Cooperate or Defect scores its own way). {b("Highest total wins!")}</p>
             <svg width="84" height="84" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M8 4h8v5a4 4 0 0 1-8 0z" fill={C.mari} />
               <path d="M8 6H5.5a2.5 2.5 0 0 0 2.6 3.6M16 6h2.5a2.5 2.5 0 0 1-2.6 3.6M12 13v4M8.5 20.5h7M9.5 17h5v3.5h-5z" />

@@ -259,7 +259,7 @@ export const RULES = [
   "You have 5 minutes to answer.",
   "Then teams are picked at random to present: you get 60 seconds to explain your answer out loud.",
   "After each presentation, every other team votes once, from 0 to 10.",
-  "Points per question = 2 for a correct answer + the average vote you received.",
+  "Points per question = 2 for a correct answer + the average vote you received. (Cooperate or Defect is played as live matches and scores its own way.)",
   "Points add up across all questions. Highest total wins!",
 ];
 

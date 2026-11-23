@@ -21,7 +21,7 @@ export const ANSWERS: Record<string, AnswerKey> = {
   },
   "1b": {
     correct: [2],
-    answer: "No. On its own, the match means only about a 1-in-9 chance of guilt.",
+    answer: "About 1 in 9 (≈ 11%). On its own, the match is far from proof.",
     insight:
       "Among 8 million people, about 8 innocent people would match by chance, plus the real culprit: about 9 matches in total. With no other evidence, this man is just one of those 9. Mixing up P(match | innocent) with P(innocent | match) is called the prosecutor's fallacy.",
     math: [
@@ -57,15 +57,16 @@ export const ANSWERS: Record<string, AnswerKey> = {
   },
   "2b": {
     correct: [],
-    answer: "Defecting wins any single round, but teams that keep cooperating score the most.",
+    answer: "Defecting wins any single round, but two teams that keep cooperating earn the most together.",
     insight:
-      "Whatever the other team does, defecting pays more in one round (5 > 3 and 1 > 0). But if both teams reason that way, each gets 1 point a round instead of 3. That's the prisoner's dilemma. Over repeated rounds, strategies like tit-for-tat (cooperate first, then copy the other team's last move) build trust and score well, even though they never beat their opponent by much.",
+      "Whatever the other team does, defecting pays more in one round (5 > 3 and 1 > 0). But if both teams reason that way, each gets 1 point a round instead of 3. That's the prisoner's dilemma. Over repeated rounds, trust pays: tit-for-tat (cooperate first, then copy the other team's last move) never wins a match outright, yet it tends to score well because it keeps cooperation going.",
     math: [
       "One round, they cooperate: defect 5 > cooperate 3",
       "One round, they defect: defect 1 > cooperate 0",
       "So defecting always wins the single round",
       "4 rounds, both always cooperate: 4 × 3 = 12 each",
       "4 rounds, both always defect: 4 × 1 = 4 each",
+      "Together: 24 cooperating vs 20 if one always defects vs 8",
     ],
   },
   "3a": {

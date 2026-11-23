@@ -123,7 +123,7 @@ const clearMatches = () => db.from("matches").delete().gte("id", 0); // match_mo
 
 async function evenTeamsError() {
   const n = (await activeTeamIds()).length;
-  return n >= 2 && n % 2 === 0 ? null : fail(`Cooperate or Defect needs an even number of teams with players (now ${n}). Move or kick a player, then try again.`);
+  return n >= 2 && n % 2 === 0 ? null : fail(`Cooperate or Defect needs an even number of teams with players (now ${n}). Have a player switch teams on their phone, or add or remove a team, then try again.`);
 }
 /** The game moved on since the caller read it (double press / realtime lag). Host ignores this. */
 const STALE: Res = { error: "stale" };
