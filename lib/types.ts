@@ -4,6 +4,7 @@ export type Stage =
   | "select"
   | "dialogue"
   | "answering"
+  | "matches"
   | "presenting"
   | "voting"
   | "reveal"
@@ -46,6 +47,22 @@ export type Vote = {
   score: number;
 };
 
+/** 2B head-to-head match. Moves are 0 = cooperate, 1 = defect; only resolved rounds are public. */
+export type Match = {
+  id: number;
+  a: string;
+  b: string;
+  round: number;
+  a_moves: number[];
+  b_moves: number[];
+  a_score: number;
+  b_score: number;
+  a_ready: boolean;
+  b_ready: boolean;
+};
+
 export const ANSWER_SECONDS = 300;
 export const PRESENT_SECONDS = 60;
 export const VOTE_SECONDS = 30;
+export const PD_ROUNDS = 4; // all-cooperate = 12 points, the same as a perfect normal question
+export const MATCH_SECONDS = 180;

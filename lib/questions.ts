@@ -1,4 +1,4 @@
-import { TOKENS } from "./theme";
+import { TOKENS } from "./theme.ts";
 
 // Public question content (safe to ship to phones). Answer key lives in lib/answers.ts (server-only).
 
@@ -26,13 +26,12 @@ export type Question = {
   topic: string;
   scene: SceneId;
   cast: Record<string, Look>;
-  dialogue: Line[];
+  dialogue: Line[]; // max 4 cards (narrator lines count), see questions.test.ts
   summary: string[];
   prompt: string;
-  kind: "mcq" | "number";
+  kind: "mcq" | "number" | "pd"; // pd = 2B head-to-head matches instead of answer/present/vote
   choices: string[];
   lockChoice?: boolean; // 1C: pick is locked before the twist is shown
-  extra?: "matrix";
   last?: boolean;
 };
 
@@ -49,25 +48,21 @@ export const QUESTIONS: Question[] = [
       maya: { name: "Maya", skin: SKIN[1], hair: "#2b1b14", hairStyle: "long", top: "#e11d48", bottom: "#1f2937", accessory: "mic" },
       omar: { name: "Omar", skin: SKIN[2], hair: "#111827", hairStyle: "short", top: "#2563eb", bottom: "#374151" },
     },
+    // Scene.tsx GameShow keys off these indices: 1 = Door 1 picked, 2 = Door 3 opens.
     dialogue: [
-      { who: "maya", text: "Welcome back to Pick-a-Door! Three doors. Behind one: a brand-new car. Behind the other two: nothing at all.", pose: "wave" },
-      { who: "omar", text: "I've been practicing my lucky guesses for weeks.", pose: "cheer" },
-      { who: "maya", text: "Choose a door. Any door.", pose: "point" },
+      { who: "maya", text: "Welcome to Pick-a-Door! One door hides a brand-new car. The other two hide nothing. Pick one!", pose: "wave" },
       { who: "omar", text: "Door number 1!", pose: "point" },
-      { who: "maya", text: "Now, I know where the car is. So I'll open one of the OTHER doors, one I know is empty.", pose: "idle" },
-      { who: "narrator", text: "Door 3 swings open. Empty." },
-      { who: "maya", text: "Two doors left: your Door 1, and Door 2. So… do you stay, or switch to Door 2?", pose: "shrug" },
-      { who: "omar", text: "Two doors means fifty-fifty… right? Then why is she even asking?", pose: "think" },
-      { who: "maya", text: "Teams, help him out. Stay or switch?", pose: "point" },
+      { who: "maya", text: "I know where the car is, so I'll open a door I know is empty: Door 3.", pose: "point" },
+      { who: "omar", text: "Two doors left, so it's 50/50… right? Should I stay or switch?", pose: "think" },
     ],
     summary: [
-      "A car is behind 1 of 3 doors; the other 2 are empty.",
+      "A car is behind 1 of 3 doors. The other 2 are empty.",
       "The contestant picks Door 1.",
-      "The host, who knows where the car is, always opens an empty door (Door 3) and offers a switch.",
+      "The host knows where the car is. He always opens an empty door the contestant didn't pick (here, Door 3), then offers a switch.",
     ],
-    prompt: "Should the contestant stay or switch?",
+    prompt: "Should the contestant stay with Door 1 or switch to Door 2?",
     kind: "mcq",
-    choices: ["Stay with Door 1", "Switch to Door 2", "Doesn't matter, it's 50/50"],
+    choices: ["Stay with Door 1", "Switch to Door 2", "It doesn't matter: it's 50/50"],
   },
   {
     id: "1b",
@@ -80,28 +75,20 @@ export const QUESTIONS: Question[] = [
       lina: { name: "Lina", skin: SKIN[0], hair: "#7c2d12", hairStyle: "bun", top: "#0f766e", bottom: "#334155", accessory: "labcoat" },
     },
     dialogue: [
-      { who: "karim", text: "We ran the crime-scene DNA through the database. We got a hit.", pose: "point" },
-      { who: "lina", text: "The suspect matches. The chance an innocent person matches by coincidence is 1 in a million.", pose: "idle" },
-      { who: "karim", text: "One in a million! Case closed. He's 99.9999% guilty.", pose: "cheer" },
-      { who: "lina", text: "Hold on. How many people live in this city?", pose: "think" },
-      { who: "karim", text: "About 8 million. Why?", pose: "shrug" },
-      { who: "lina", text: "And how did we find him? Any other evidence pointing at him?", pose: "think" },
-      { who: "karim", text: "Not really. He just popped up in the database search.", pose: "shrug" },
-      { who: "lina", text: "Then before we celebrate, let's think about what that match actually tells us.", pose: "point" },
+      { who: "karim", text: "The crime-scene DNA matches a man in our database. An innocent person matches only 1 time in a million!", pose: "cheer" },
+      { who: "karim", text: "So he's 99.9999% guilty. Case closed.", pose: "point" },
+      { who: "lina", text: "Not so fast. The culprit is one of the 8 million people in this city, and we have no other evidence against this man.", pose: "think" },
+      { who: "lina", text: "So how likely is it that he's really the culprit?", pose: "point" },
     ],
     summary: [
       "Crime-scene DNA matches a suspect.",
-      "Chance an innocent person matches by coincidence: 1 in 1,000,000.",
-      "City population: 8,000,000. The suspect was found only by the database search, no other evidence.",
+      "An innocent person matches by pure chance 1 time in 1,000,000.",
+      "The culprit is one of the city's 8,000,000 people.",
+      "There is no other evidence against the suspect.",
     ],
-    prompt: "Is the suspect almost certainly guilty?",
+    prompt: "Based on the DNA alone, how likely is the suspect to be guilty?",
     kind: "mcq",
-    choices: [
-      "Yes: 1-in-a-million means ~99.9999% guilty",
-      "Yes: at least ~90% likely guilty",
-      "No: on its own it's only about a 1-in-9 chance",
-      "No: DNA evidence is never reliable",
-    ],
+    choices: ["About 99.9999%: it's a 1-in-a-million match", "At least 90%", "About 1 in 9 (≈ 11%)", "Close to 0%: DNA matches prove nothing"],
   },
   {
     id: "1c",
@@ -114,18 +101,20 @@ export const QUESTIONS: Question[] = [
       hadi: { name: "Nurse Hadi", skin: SKIN[4], hair: "#0c0a09", hairStyle: "bald", top: "#06b6d4", bottom: "#06b6d4", accessory: "cap" },
     },
     dialogue: [
-      { who: "sara", text: "I need surgery next week, and I get to pick my surgeon.", pose: "idle" },
-      { who: "hadi", text: "You have two options. Here are their records.", pose: "point" },
-      { who: "narrator", text: "Surgeon A: 95% overall success. Surgeon B: 90% overall success." },
-      { who: "sara", text: "Well… 95 beats 90. That seems easy.", pose: "think" },
-      { who: "hadi", text: "Before you decide: Surgeon B takes most of this hospital's severe cases.", pose: "idle" },
-      { who: "sara", text: "Does that matter? A success rate is a success rate.", pose: "shrug" },
-      { who: "hadi", text: "Pick first. Then I'll show you the full breakdown.", pose: "point" },
+      { who: "hadi", text: "You can choose your surgeon. Surgeon A's operations succeed 95% of the time. Surgeon B's succeed 90% of the time.", pose: "point" },
+      { who: "sara", text: "95 beats 90. Easy: Surgeon A!", pose: "cheer" },
+      { who: "hadi", text: "One detail: Surgeon B takes most of the hospital's severe, high-risk cases.", pose: "idle" },
+      { who: "hadi", text: "Lock in your pick first. Then I'll show you both records, split into mild and severe cases.", pose: "point" },
     ],
-    summary: ["Surgeon A: 95% overall success rate.", "Surgeon B: 90% overall success rate.", "You must choose one."],
-    prompt: "Which surgeon would you choose?",
+    summary: [
+      "Surgeon A: 95% of operations succeed.",
+      "Surgeon B: 90% of operations succeed.",
+      "Surgeon B handles most of the severe (riskier) cases.",
+      "Lock in a pick first. Then you'll see the full records.",
+    ],
+    prompt: "Which surgeon should you choose?",
     kind: "mcq",
-    choices: ["Surgeon A (95%)", "Surgeon B (90%)", "No real difference"],
+    choices: ["Surgeon A (95% overall)", "Surgeon B (90% overall)", "It makes no difference"],
     lockChoice: true,
   },
   {
@@ -140,17 +129,14 @@ export const QUESTIONS: Question[] = [
       leen: { name: "Leen", skin: SKIN[3], hair: "#4a2511", hairStyle: "long", top: "#f59e0b", bottom: "#334155" },
     },
     dialogue: [
-      { who: "nadia", text: "Pop quiz. And it's not about facts, it's about each other.", pose: "wave" },
       { who: "nadia", text: "Every team secretly picks a whole number from 0 to 100.", pose: "point" },
-      { who: "nadia", text: "We average all the numbers, then take two-thirds of that. That's the target. Closest wins.", pose: "idle" },
-      { who: "yousef", text: "If everyone picks randomly, the average is 50, so the target is about 33.", pose: "think" },
-      { who: "leen", text: "But if everyone thinks that, they'll all pick 33… so the target becomes 22.", pose: "point" },
-      { who: "yousef", text: "And if they think THAT far ahead…", pose: "shrug" },
-      { who: "nadia", text: "Exactly. How deep does your reasoning go? Choose your number.", pose: "point" },
+      { who: "nadia", text: "I'll average all the picks and take two-thirds of that. That's the target. The closest team wins.", pose: "idle" },
+      { who: "yousef", text: "If people pick at random, the average is 50, so the target is about 33.", pose: "think" },
+      { who: "leen", text: "But if everyone picks 33, the target drops to 22… and then lower. How far ahead should we think?", pose: "shrug" },
     ],
     summary: [
-      "Each team picks a whole number from 0 to 100.",
-      "Target = ⅔ × the average of all submitted numbers.",
+      "Each team secretly picks a whole number from 0 to 100.",
+      "Target = ⅔ × the average of all picks.",
       "The team closest to the target wins.",
     ],
     prompt: "What number does your team pick?",
@@ -169,24 +155,19 @@ export const QUESTIONS: Question[] = [
       zaid: { name: "Zaid", skin: SKIN[3], hair: "#1e1b4b", hairStyle: "short", top: "#2563eb", bottom: "#1f2937" },
     },
     dialogue: [
-      { who: "rami", text: "Two teams. Two buttons: COOPERATE or DEFECT. No talking, no peeking.", pose: "wave" },
-      { who: "rami", text: "Both cooperate? 3 points each. Both defect? 1 point each.", pose: "point" },
-      { who: "rami", text: "But if one defects while the other cooperates, the defector gets 5 and the cooperator gets nothing.", pose: "shrug" },
-      { who: "dana", text: "If they cooperate, I get 3 by cooperating… or 5 by defecting.", pose: "think" },
-      { who: "zaid", text: "And if they defect, I get 0 by cooperating… or 1 by defecting.", pose: "think" },
-      { who: "dana", text: "So no matter what they do…", pose: "shrug" },
-      { who: "zaid", text: "…but if we BOTH think like that, we each walk away with 1 instead of 3.", pose: "point" },
-      { who: "rami", text: "One round only. Choose wisely.", pose: "idle" },
+      { who: "rami", text: "Every team faces one other team. Each round, both teams secretly press COOPERATE or DEFECT.", pose: "wave" },
+      { who: "rami", text: "Both cooperate: 3 points each. Both defect: 1 point each. One defects, one cooperates: the defector gets 5, the cooperator gets 0.", pose: "point" },
+      { who: "dana", text: "So in any single round, defecting pays more…", pose: "think" },
+      { who: "zaid", text: "…but if we both defect every round, we each get 1 instead of 3. And every point goes on the leaderboard.", pose: "point" },
     ],
     summary: [
-      "Two teams each secretly choose COOPERATE or DEFECT.",
-      "Points come from the payoff matrix below.",
-      "This is a single round.",
+      "Your team plays 4 rounds against one other team.",
+      "Each round, both teams secretly choose COOPERATE or DEFECT.",
+      "Points follow the table. Your match total is added to the leaderboard.",
     ],
-    prompt: "To maximize your own points in this single round, what should a team choose?",
-    kind: "mcq",
-    choices: ["Cooperate", "Defect", "It depends on what the other team picks"],
-    extra: "matrix",
+    prompt: "Cooperate or defect?",
+    kind: "pd",
+    choices: ["Cooperate", "Defect"],
   },
   {
     id: "3a",
@@ -200,19 +181,16 @@ export const QUESTIONS: Question[] = [
       huda: { name: "Huda (juror)", skin: SKIN[4], hair: "#0c0a09", hairStyle: "curly", top: "#be185d", bottom: "#334155" },
     },
     dialogue: [
-      { who: "amal", text: "Before deliberations, the jury has a question for the court.", pose: "idle" },
-      { who: "huda", text: "Your Honor, how sure do we need to be before we convict?", pose: "think" },
-      { who: "faris", text: "Every justice system makes two kinds of mistakes: freeing a guilty person, or convicting an innocent one.", pose: "point" },
-      { who: "faris", text: "Lower the bar and you catch more criminals, but you also convict more innocent people.", pose: "shrug" },
-      { who: "amal", text: "There's an old principle: better that ten guilty people go free than one innocent person suffer.", pose: "idle" },
-      { who: "huda", text: "So convicting an innocent person is ten times worse than freeing a guilty one?", pose: "think" },
-      { who: "amal", text: "If society believes that, then the math can tell you exactly how sure you need to be.", pose: "point" },
+      { who: "huda", text: "Your Honor, how sure must we be before we convict?", pose: "think" },
+      { who: "amal", text: "Every verdict risks one of two mistakes: freeing a guilty person, or convicting an innocent one.", pose: "idle" },
+      { who: "faris", text: "An old principle says it's better that 10 guilty people go free than that 1 innocent person is convicted.", pose: "point" },
+      { who: "amal", text: "If convicting an innocent person is 10 times worse, the math tells you exactly how sure you need to be.", pose: "point" },
     ],
     summary: [
-      "Two possible errors: freeing a guilty person, or convicting an innocent one.",
-      "Assume society judges a wrongful conviction to be 10× worse than freeing a guilty person.",
+      "A verdict can go wrong in two ways: freeing a guilty person, or convicting an innocent one.",
+      "Assume convicting an innocent person is 10× as harmful as freeing a guilty one.",
     ],
-    prompt: "To minimize expected harm, convict only when the probability of guilt is above…",
+    prompt: "To keep the expected harm as low as possible, convict only when the chance of guilt is above…",
     kind: "mcq",
     choices: ["50%", "75%", "About 91%", "99.9%"],
   },
@@ -227,26 +205,23 @@ export const QUESTIONS: Question[] = [
       rana: { name: "Eng. Rana", skin: SKIN[0], hair: "#64748b", hairStyle: "hijab", top: "#0369a1", bottom: "#1e293b", accessory: "labcoat" },
     },
     dialogue: [
-      { who: "tariq", text: "Our planes keep coming back shot up. We need more armor, but armor is heavy.", pose: "point" },
-      { who: "rana", text: "So we can only reinforce some parts of the plane. Which ones?", pose: "think" },
-      { who: "tariq", text: "Look at this. We mapped every bullet hole on the planes that returned.", pose: "point" },
-      { who: "narrator", text: "Wings and tail: covered in holes. Engines and cockpit: almost untouched." },
-      { who: "tariq", text: "Obvious, right? Armor the wings and tail. That's where they're getting hit.", pose: "cheer" },
-      { who: "rana", text: "Hmm. Which planes did we actually look at?", pose: "think" },
-      { who: "tariq", text: "The ones that came back, of course.", pose: "shrug" },
+      { who: "tariq", text: "Our planes keep coming back full of bullet holes. We can add armor, but only to some areas.", pose: "point" },
+      { who: "narrator", text: "On the planes that came back, holes cover the wings, tail and body. The engines and cockpit are almost clean." },
+      { who: "tariq", text: "Easy: armor the wings and tail. That's where they get hit!", pose: "cheer" },
+      { who: "rana", text: "Wait. We only looked at the planes that made it back…", pose: "think" },
     ],
     summary: [
-      "On returning planes, bullet holes cluster on the wings and tail.",
-      "Engines and cockpit have very few holes.",
-      "Armor is limited; only some areas can be reinforced.",
+      "On planes that returned, bullet holes cluster on the wings, tail and body.",
+      "The engines and cockpit have almost no holes.",
+      "Armor is heavy: only some areas can be reinforced.",
     ],
     prompt: "Where should the armor go?",
     kind: "mcq",
     choices: [
-      "Where there are the most holes (wings, tail)",
-      "Where there are the fewest holes (engines, cockpit)",
-      "Spread equally across the plane",
-      "No extra armor is needed",
+      "Where the most holes are (wings, tail)",
+      "Where the fewest holes are (engines, cockpit)",
+      "Spread evenly over the whole plane",
+      "Nowhere: the planes made it back fine",
     ],
   },
   {
@@ -261,18 +236,16 @@ export const QUESTIONS: Question[] = [
       ali: { name: "Ali", skin: SKIN[3], hair: "#1c1917", hairStyle: "curly", top: "#0d9488", bottom: "#334155" },
     },
     dialogue: [
-      { who: "host", text: "One last question. And this time, the game… is this event itself.", pose: "wave" },
-      { who: "host", text: "Every round, your team earned 2 points for a correct answer, plus the average vote other teams gave you.", pose: "point" },
-      { who: "reem", text: "And we voted on every other team… but never on ourselves.", pose: "think" },
-      { who: "ali", text: "So my vote could never raise my own score.", pose: "shrug" },
-      { who: "reem", text: "But it could raise or lower everyone we're competing against…", pose: "point" },
-      { who: "host", text: "So tell me: if all you cared about was your team's rank, how should you have voted?", pose: "point" },
+      { who: "host", text: "Last question. This time, the game is this event itself.", pose: "wave" },
+      { who: "host", text: "On most questions, you earned 2 points for a correct answer, plus the average vote the other teams gave you.", pose: "point" },
+      { who: "reem", text: "We voted on every other team, but never on ourselves. So our vote never changed our own score…", pose: "think" },
+      { who: "ali", text: "…only our rivals' scores. So how should we have voted?", pose: "shrug" },
     ],
     summary: [
-      "Score per question = 2 (if correct) + average of the other teams' votes.",
-      "Your vote never affects your own score, only your rivals' scores.",
+      "On most questions: points = 2 (if correct) + the average vote from the other teams.",
+      "Your vote never changes your own score, only your rivals' scores.",
     ],
-    prompt: "To maximize your team's rank, how should a team vote on the other teams?",
+    prompt: "If you only care about your team's rank, how should you vote on the other teams?",
     kind: "mcq",
     choices: ["Honestly", "Always 10", "Always 0", "Randomly"],
     last: true,
@@ -282,11 +255,11 @@ export const QUESTIONS: Question[] = [
 export const questionById = (id: string | null | undefined) => QUESTIONS.find((q) => q.id === id);
 
 export const RULES = [
-  "Each team submits ONE answer plus a written explanation per question. Any member can submit; the latest submission counts.",
+  "Each team submits one answer plus a written explanation. Any teammate can submit; the latest submission counts.",
   "You have 5 minutes to answer.",
-  "Teams are then picked at random to present: you get 60 seconds to explain your answer out loud.",
-  "After each presentation, every other team gives ONE vote from 0 to 10.",
-  "Points per question = 2 for a correct answer + the average vote you received.",
+  "Then teams are picked at random to present: you get 60 seconds to explain your answer out loud.",
+  "After each presentation, every other team votes once, from 0 to 10.",
+  "Points per question = 2 for a correct answer + the average vote you received. (Cooperate or Defect is played as live matches and scores its own way.)",
   "Points add up across all questions. Highest total wins!",
 ];
 

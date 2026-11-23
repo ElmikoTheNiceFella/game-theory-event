@@ -267,6 +267,16 @@ kbd.key {
 /* team pieces wobble when hovered */
 .token-hover:hover .token { animation: gte-wob .6s ease-in-out 1 }
 
+/* in-flight buttons: spinner, no double press, but don't look "disabled" */
+@keyframes gte-turn { to { transform: rotate(360deg) } }
+.gte-spinner { width: 1em; height: 1em; flex: none; box-sizing: border-box; border-radius: 999px; border: .18em solid currentColor; border-right-color: transparent; animation: gte-turn .7s linear infinite }
+[aria-busy="true"] { cursor: progress !important }
+.btn[aria-busy="true"]:disabled { opacity: 0.85 }
+.ctrl[aria-busy="true"]:disabled { border-style: solid; color: var(--paper) }
+
+/* confirmation modal */
+.gte-modal::backdrop { background: rgba(23, 22, 28, 0.55) }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;

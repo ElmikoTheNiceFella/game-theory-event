@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scoreQuestion, twoThirds } from "./scoring.ts";
+import { matchScores, pairUp, scoreQuestion, twoThirds } from "./scoring.ts";
 import { SURGEON_TABLE } from "./surgeonTable.ts";
 
 const sub = (team_id: string, choice: number | null, number: number | null = null) => ({ team_id, choice, number });
@@ -42,4 +42,18 @@ test("1C table: A 95% vs B 90% overall, but B better in both categories", () => 
   assert.equal(overall(b), 0.9);
   assert.ok(b.mild.ok / b.mild.n > a.mild.ok / a.mild.n);
   assert.ok(b.severe.ok / b.severe.n > a.severe.ok / a.severe.n);
+});
+
+test("2B: raw match totals, teams without a match score 0", () => {
+  const r = matchScores(["A", "B", "C"], [{ a: "B", b: "A", a_score: 7, b_score: 12 }]);
+  assert.deepEqual([r.A.points, r.B.points, r.C.points], [12, 7, 0]);
+  assert.equal(r.A.correct, false);
+});
+
+test("2B: pairUp needs an even count and uses every team once", () => {
+  assert.equal(pairUp(["A", "B", "C"]), null);
+  assert.equal(pairUp([]), null);
+  const p = pairUp(["A", "B", "C", "D", "E", "F"])!;
+  assert.equal(p.length, 3);
+  assert.deepEqual(p.flat().sort(), ["A", "B", "C", "D", "E", "F"]);
 });

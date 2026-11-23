@@ -5,12 +5,15 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { db } from "@/lib/db";
 import { ANSWERS, SURGEON_TABLE } from "@/lib/answers";
 import { questionById, TEAM_COLORS } from "@/lib/questions";
-import { scoreQuestion, twoThirds } from "@/lib/scoring";
+import { matchScores, pairUp, scoreQuestion, twoThirds } from "@/lib/scoring";
 import {
   ANSWER_SECONDS,
+  MATCH_SECONDS,
+  PD_ROUNDS,
   PRESENT_SECONDS,
   VOTE_SECONDS,
   type Game,
+  type Match,
   type Stage,
   type Submission,
   type Team,
@@ -83,6 +86,7 @@ function revealPatch(g: Game): Partial<Game> {
   return {
     stage: "reveal",
     presenting_team_id: null,
+    show_extra: false, // reused at reveal as "show the math"
     phase_ends_at: null,
     paused_remaining_ms: null,
     finished_question_ids: g.finished_question_ids.includes(q) ? g.finished_question_ids : [...g.finished_question_ids, q],
@@ -108,11 +112,19 @@ async function advanceFrom(phase: number) {
   const g = await getGame();
   if (g.phase !== phase) return;
   if (g.stage === "answering" || g.stage === "voting") await transition(phase, await nextPresenterPatch(g));
+  else if (g.stage === "matches") await transition(phase, revealPatch(g));
   else if (g.stage === "presenting")
     await transition(phase, { stage: "voting", voted_team_ids: [], phase_ends_at: endsIn(VOTE_SECONDS), paused_remaining_ms: null });
 }
 
 const fail = (error: string): Res => ({ error });
+
+const clearMatches = () => db.from("matches").delete().gte("id", 0); // match_moves cascade
+
+async function evenTeamsError() {
+  const n = (await activeTeamIds()).length;
+  return n >= 2 && n % 2 === 0 ? null : fail(`Cooperate or Defect needs an even number of teams with players (now ${n}). Have a player switch teams on their phone, or add or remove a team, then try again.`);
+}
 /** The game moved on since the caller read it (double press / realtime lag). Host ignores this. */
 const STALE: Res = { error: "stale" };
 
@@ -176,6 +188,7 @@ export async function goTo(phase: number, to: Stage): Promise<Res> {
   if (to === "select" && g.question_id && !g.finished_question_ids.includes(g.question_id)) {
     await db.from("submissions").delete().eq("question_id", g.question_id);
     await db.from("votes").delete().eq("question_id", g.question_id);
+    if (questionById(g.question_id)?.kind === "pd") await clearMatches();
   }
   const patch: Partial<Game> = { stage: to, phase_ends_at: null, paused_remaining_ms: null };
   if (to === "select") Object.assign(patch, { question_id: null, presenting_team_id: null });
@@ -190,6 +203,11 @@ export async function startQuestion(phase: number, qid: string): Promise<Res> {
   if (g.stage !== "select") return fail("Not on question select");
   if (!questionById(qid)) return fail("Unknown question");
   if (g.finished_question_ids.includes(qid)) return fail("Already played");
+  if (questionById(qid)!.kind === "pd") {
+    const e = await evenTeamsError();
+    if (e) return e;
+    await clearMatches();
+  }
   await db.from("submissions").delete().eq("question_id", qid);
   await db.from("votes").delete().eq("question_id", qid);
   await transition(phase, {
@@ -215,7 +233,15 @@ export async function dialogueStep(phase: number, delta: 1 | -1): Promise<Res> {
   if (g.stage !== "dialogue" || !q) return fail("Not in dialogue");
   const i = g.dialogue_index + delta;
   if (i < 0) return { ok: true };
-  if (i >= q.dialogue.length)
+  if (i >= q.dialogue.length && q.kind === "pd") {
+    // teams may have changed during the story: pair whoever is active now
+    const pairs = pairUp(await activeTeamIds());
+    if (!pairs) return (await evenTeamsError()) ?? fail("Need an even number of teams");
+    await clearMatches();
+    const { error } = await db.from("matches").insert(pairs.map(([a, b], id) => ({ id, a, b })));
+    if (error) return fail(error.message);
+    await transition(phase, { stage: "matches", phase_ends_at: endsIn(MATCH_SECONDS), paused_remaining_ms: null });
+  } else if (i >= q.dialogue.length)
     await transition(phase, { stage: "answering", phase_ends_at: endsIn(ANSWER_SECONDS), paused_remaining_ms: null });
   else await transition(phase, { dialogue_index: i });
   return { ok: true };
@@ -232,7 +258,7 @@ export async function skipToReveal(phase: number): Promise<Res> {
   await requireOrganizer();
   const g = await getGame();
   if (g.phase !== phase) return STALE;
-  if (!["answering", "presenting", "voting"].includes(g.stage)) return fail("Nothing to skip");
+  if (!["answering", "matches", "presenting", "voting"].includes(g.stage)) return fail("Nothing to skip");
   await transition(phase, revealPatch(g));
   return { ok: true };
 }
@@ -269,12 +295,39 @@ export async function toggleExtra(phase: number): Promise<Res> {
   return { ok: true };
 }
 
+/** Removes a player. Their phone drops back to the join screen (they can rejoin). */
+export async function kickParticipant(id: string): Promise<Res> {
+  await requireOrganizer();
+  if (!UUID.test(String(id))) return fail("Bad id");
+  const { error } = await db.from("participants").delete().eq("id", id);
+  return error ? fail(error.message) : { ok: true };
+}
+
+export type Presentation = {
+  picks: { teamId: string; choice: number | null; number: number | null }[];
+  explanation: string; // the presenting team's written explanation ("" if none)
+};
+
+/** Projector during presentations: every team's pick + the presenter's explanation. */
+export async function getPresentation(): Promise<Presentation | null> {
+  await requireOrganizer();
+  const g = await getGame();
+  if (!g.question_id || !["presenting", "voting"].includes(g.stage)) return null;
+  const { data, error } = await db.from("submissions").select("team_id, choice, number, explanation").eq("question_id", g.question_id);
+  if (error) throw error;
+  return {
+    picks: (data ?? []).map((s) => ({ teamId: s.team_id, choice: s.choice, number: s.number })),
+    explanation: (data ?? []).find((s) => s.team_id === g.presenting_team_id)?.explanation ?? "",
+  };
+}
+
 /** Wipes answers, votes and scores; keeps teams and participants. */
 export async function resetEvent(): Promise<Res> {
   await requireOrganizer();
   const g = await getGame();
   await db.from("submissions").delete().neq("question_id", "");
   await db.from("votes").delete().neq("question_id", "");
+  await clearMatches();
   await transition(g.phase, {
     stage: "lobby",
     question_id: null,
@@ -316,8 +369,8 @@ export async function setTeam(pid: string, teamId: string | null): Promise<Res> 
   if (!p) return fail("Join first");
   const g = await getGame();
   // shortcut: team changes are frozen during presenting/voting (prevents voting twice by switching)
-  if (p.team_id && (g.stage === "presenting" || g.stage === "voting"))
-    return fail("Wait until the presentation is over to switch teams");
+  if (p.team_id && (g.stage === "presenting" || g.stage === "voting" || g.stage === "matches"))
+    return fail(g.stage === "matches" ? "Wait until the matches are over to switch teams" : "Wait until the presentation is over to switch teams");
   if (teamId && !(await getTeams()).some((t) => t.id === teamId)) return fail("Team not found");
   const { error } = await db.from("participants").update({ team_id: teamId }).eq("id", p.id);
   return error ? fail(error.message) : { ok: true };
@@ -411,6 +464,29 @@ export async function castVote(pid: string, score: number): Promise<Res> {
   return { ok: true };
 }
 
+const MOVE_ERRORS: Record<string, string> = {
+  closed: "The matches are over",
+  "no match": "Your team isn't in a match",
+  over: "Your match is over",
+  stale: "That round already ended. Pick again.",
+  "bad choice": "Pick cooperate or defect",
+};
+
+/** 2B: choose cooperate (0) or defect (1) for `round`. Any teammate; the latest choice counts until the round resolves. */
+export async function playMove(pid: string, round: number, choice: number): Promise<Res> {
+  const p = await getParticipant(pid);
+  if (!p?.team_id) return fail("Join a team first");
+  const r = Number(round),
+    c = Number(choice);
+  if (!Number.isInteger(r) || (c !== 0 && c !== 1)) return fail("Pick cooperate or defect");
+  const { data, error } = await db.rpc("pd_move", { t: p.team_id, r, c, rounds: PD_ROUNDS });
+  if (error) return fail(error.message);
+  if (data !== "ok") return fail(MOVE_ERRORS[data] ?? String(data));
+  const [g, { data: ms }] = await Promise.all([getGame(), db.from("matches").select("round")]);
+  if (g.stage === "matches" && ms?.length && ms.every((m) => m.round > PD_ROUNDS)) await advanceFrom(g.phase);
+  return { ok: true };
+}
+
 /* ---------------- results (public: totals + averages only) ---------------- */
 
 export type Standing = { id: string; name: string; color: string; total: number };
@@ -430,38 +506,39 @@ export type Results = {
     correct: number[];
     answer: string;
     insight: string;
+    math: string[];
     rows: RevealRow[];
     twoThirds?: { average: number | null; target: number | null; closest: string[] };
-    pairs?: { a: string; b: string; aChoice: number; bChoice: number; aPts: number; bPts: number }[];
+    matches?: Match[];
   };
   table: typeof SURGEON_TABLE | null;
 };
-
-const PAYOFF = [
-  [3, 0],
-  [5, 1],
-]; // PAYOFF[mine][theirs], 0 = cooperate, 1 = defect
 
 export async function getResults(): Promise<Results> {
   const [g, teams] = await Promise.all([getGame(), getTeams()]);
   const ids = teams.map((t) => t.id);
   const done = g.finished_question_ids;
-  const [{ data: subs }, { data: votes }] = await Promise.all([
+  const [{ data: subs }, { data: votes }, { data: matches }] = await Promise.all([
     db.from("submissions").select("*").in("question_id", done.length ? done : ["-"]),
     db.from("votes").select("*").in("question_id", done.length ? done : ["-"]),
+    db.from("matches").select("*").order("id"),
   ]);
   const S = (subs ?? []) as Submission[],
-    V = (votes ?? []) as Vote[];
+    V = (votes ?? []) as Vote[],
+    M = (matches ?? []) as Match[];
 
   const scored: Record<string, ReturnType<typeof scoreQuestion>> = {};
   for (const qid of done) {
-    scored[qid] = scoreQuestion(
-      qid,
-      ANSWERS[qid]?.correct ?? [],
-      ids,
-      S.filter((s) => s.question_id === qid),
-      V.filter((v) => v.question_id === qid),
-    );
+    scored[qid] =
+      questionById(qid)?.kind === "pd"
+        ? matchScores(ids, M)
+        : scoreQuestion(
+            qid,
+            ANSWERS[qid]?.correct ?? [],
+            ids,
+            S.filter((s) => s.question_id === qid),
+            V.filter((v) => v.question_id === qid),
+          );
   }
   const standings = teams
     .map((t) => ({ id: t.id, name: t.name, color: t.color, total: done.reduce((a, q) => a + (scored[q]?.[t.id]?.points ?? 0), 0) }))
@@ -477,23 +554,7 @@ export async function getResults(): Promise<Results> {
     });
     reveal = { questionId: qid, ...ANSWERS[qid], rows };
     if (qid === "2a") reveal.twoThirds = twoThirds(qs);
-    if (qid === "2b") {
-      // Fun only, no points: pair teams deterministically by id
-      const players = qs.filter((s) => s.choice === 0 || s.choice === 1).sort((a, b) => a.team_id.localeCompare(b.team_id));
-      reveal.pairs = [];
-      for (let i = 0; i + 1 < players.length; i += 2) {
-        const a = players[i],
-          b = players[i + 1];
-        reveal.pairs.push({
-          a: a.team_id,
-          b: b.team_id,
-          aChoice: a.choice!,
-          bChoice: b.choice!,
-          aPts: PAYOFF[a.choice!][b.choice!],
-          bPts: PAYOFF[b.choice!][a.choice!],
-        });
-      }
-    }
+    if (questionById(qid)?.kind === "pd") reveal.matches = M;
   }
   const table = qid && questionById(qid)?.lockChoice && (g.show_extra || g.stage === "reveal") ? SURGEON_TABLE : null;
   return { standings, reveal, table };

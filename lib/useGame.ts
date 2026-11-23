@@ -3,21 +3,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "./supabase";
 import { getResults, serverNow, type Results } from "@/app/actions";
-import type { Game, Participant, Team } from "./types";
+import type { Game, Match, Participant, Team } from "./types";
 
-export type GameState = { game: Game | null; teams: Team[]; participants: Participant[] };
+export type GameState = { game: Game | null; teams: Team[]; participants: Participant[]; matches: Match[] };
 
 /** Live public state. Refetches everything on any change, on (re)subscribe and when the tab wakes up. */
 export function useGame() {
-  const [state, setState] = useState<GameState>({ game: null, teams: [], participants: [] });
+  const [state, setState] = useState<GameState>({ game: null, teams: [], participants: [], matches: [] });
 
   const load = useCallback(async () => {
-    const [g, t, p] = await Promise.all([
+    const [g, t, p, m] = await Promise.all([
       supabase.from("game").select("*").eq("id", 1).single(),
       supabase.from("teams").select("*").order("created_at"),
       supabase.from("participants").select("id, name, team_id").order("created_at"),
+      supabase.from("matches").select("*").order("id"),
     ]);
-    if (g.data) setState({ game: g.data as Game, teams: (t.data ?? []) as Team[], participants: (p.data ?? []) as Participant[] });
+    if (g.data)
+      setState({ game: g.data as Game, teams: (t.data ?? []) as Team[], participants: (p.data ?? []) as Participant[], matches: (m.data ?? []) as Match[] });
   }, []);
 
   useEffect(() => {
@@ -26,6 +28,7 @@ export function useGame() {
       .on("postgres_changes", { event: "*", schema: "public", table: "game" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "participants" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, load)
       // changes only stream after "Subscribed to PostgreSQL"; refetch then to cover the gap
       .on("system", {}, load)
       .subscribe((status) => {

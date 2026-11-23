@@ -8,7 +8,9 @@ import {
   advance,
   amOrganizer,
   dialogueStep,
+  getPresentation,
   goTo,
+  kickParticipant,
   organizerLogin,
   removeTeam,
   resetEvent,
@@ -16,18 +18,19 @@ import {
   startQuestion,
   toggleExtra,
   togglePause,
+  type Presentation,
 } from "../actions";
 import { useGame, useRemaining, useResults } from "@/lib/useGame";
 import { QUESTIONS, questionById, type Question } from "@/lib/questions";
-import { ANSWER_SECONDS, PRESENT_SECONDS, VOTE_SECONDS, type Game, type Participant, type Stage as StageName, type Team } from "@/lib/types";
+import { ANSWER_SECONDS, MATCH_SECONDS, PD_ROUNDS, PRESENT_SECONDS, VOTE_SECONDS, type Game, type Match, type Participant, type Stage as StageName, type Team } from "@/lib/types";
 import { C, LETTERS, QUESTION_ICONS, TOKENS } from "@/lib/theme";
 import { DialogueStage } from "@/components/Dialogue";
 import { Finale } from "@/components/Finale";
-import { HostLeaderboard, HostReveal, PayoffMatrix, SurgeonTable } from "@/components/Panels";
-import { Bullets, CodePill, ControlBar, Glyph, HostHeader, I, Ring, Sep, Stage, StatusChip, Token } from "@/components/ui";
+import { HostLeaderboard, HostReveal, MatchCard, PayoffMatrix, SurgeonTable } from "@/components/Panels";
+import { Btn, Bullets, CodePill, ConfirmModal, ControlBar, Glyph, HostHeader, I, Ring, Sep, Stage, StatusChip, Token } from "@/components/ui";
 
-const TIMED: StageName[] = ["answering", "presenting", "voting"];
-const MID_QUESTION: StageName[] = ["dialogue", "answering", "presenting", "voting"];
+const TIMED: StageName[] = ["answering", "matches", "presenting", "voting"];
+const MID_QUESTION: StageName[] = ["dialogue", "answering", "matches", "presenting", "voting"];
 
 export default function HostPage() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -44,6 +47,7 @@ export default function HostPage() {
 function PinGate({ onOk }: { onOk: () => void }) {
   const [pin, setPin] = useState("");
   const [err, setErr] = useState(false);
+  const [busy, setBusy] = useState(false);
   return (
     <Stage>
       <div className="paper" style={{ position: "absolute", inset: 0 }}>
@@ -53,7 +57,10 @@ function PinGate({ onOk }: { onOk: () => void }) {
             className="gte-pop"
             onSubmit={async (e) => {
               e.preventDefault();
-              const r = await organizerLogin(pin);
+              if (busy) return;
+              setBusy(true);
+              const r = await organizerLogin(pin).catch(() => ({ error: "failed" }));
+              setBusy(false);
               if (r.error) setErr(true);
               else onOk();
             }}
@@ -97,7 +104,8 @@ function PinGate({ onOk }: { onOk: () => void }) {
                   </p>
                 )}
               </div>
-              <button type="submit" className="btn btn-primary" style={{ height: 72, fontSize: 26, boxShadow: `5px 5px 0 ${C.ink}` }}>
+              <button type="submit" disabled={busy} aria-busy={busy || undefined} className="btn btn-primary" style={{ height: 72, fontSize: 26, boxShadow: `5px 5px 0 ${C.ink}` }}>
+                {busy && <span className="gte-spinner" aria-hidden="true" />}
                 Enter
                 <I.arrow size={24} />
               </button>
@@ -112,7 +120,7 @@ function PinGate({ onOk }: { onOk: () => void }) {
 /* ---------------- the show ---------------- */
 
 function Host() {
-  const { game, teams, participants, reload } = useGame();
+  const { game, teams, participants, matches, reload } = useGame();
   const remaining = useRemaining(game);
   const results = useResults(game);
   const [toast, setToast] = useState("");
@@ -167,19 +175,27 @@ function Host() {
   let screen: ReactNode = null;
   switch (game.stage) {
     case "lobby":
-      screen = <Lobby teams={teams} participants={participants} origin={origin} onAdd={(n) => act(() => addTeam(n))} onRemove={(id) => act(() => removeTeam(id))} />;
+      screen = <Lobby teams={teams} participants={participants} origin={origin} onAdd={(n) => act(() => addTeam(n))} onRemove={(id) => act(() => removeTeam(id))} onKick={async (id) => {
+            // not via act(): the modal must never close without kicking because another action was in flight
+            const r = await kickParticipant(id).catch((e) => ({ error: e instanceof Error ? e.message : "Kick failed" }));
+            setToast(r.error ?? "");
+            await reload();
+          }} busy={busy} />;
       break;
     case "rules":
       screen = <Rules />;
       break;
     case "select":
-      screen = <Select game={game} teams={teams} members={members} busy={busy} onStart={(id) => act(() => startQuestion(P, id))} onAdd={(n) => act(() => addTeam(n))} onRemove={(id) => act(() => removeTeam(id))} />;
+      screen = <Select game={game} teams={teams} members={members} activeCount={active.length} busy={busy} onStart={(id) => act(() => startQuestion(P, id))} onAdd={(n) => act(() => addTeam(n))} onRemove={(id) => act(() => removeTeam(id))} />;
       break;
     case "dialogue":
       screen = q && <DialogueStage q={q} index={game.dialogue_index} raised={!hideBar} onNext={() => act(() => dialogueStep(P, 1))} onPrev={() => act(() => dialogueStep(P, -1))} />;
       break;
     case "answering":
       screen = q && <Answering q={q} game={game} active={active} idx={idx} remaining={remaining} paused={paused} table={game.show_extra ? results?.table ?? null : null} />;
+      break;
+    case "matches":
+      screen = q && <Matches q={q} matches={matches} teams={teams} remaining={remaining} paused={paused} />;
       break;
     case "presenting":
       screen = q && <Presenting q={q} game={game} active={active} teams={teams} remaining={remaining} paused={paused} />;
@@ -191,7 +207,7 @@ function Host() {
       screen = q && (
         <div className="paper" style={{ position: "absolute", inset: 0 }}>
           <HostHeader right="The reveal" />
-          {results?.reveal && <HostReveal q={q} results={results} teams={teams} />}
+          {results?.reveal && <HostReveal q={q} results={results} teams={teams} showMath={game.show_extra} />}
         </div>
       );
       break;
@@ -212,16 +228,16 @@ function Host() {
   const timed = TIMED.includes(game.stage);
   const toQuestions = () => (!MID_QUESTION.includes(game.stage) || confirm("Abort this question? Its answers and votes will be discarded.")) && act(() => goTo(P, "select"));
   const questionsBtn = (
-    <button className="ctrl" onClick={toQuestions}>
+    <Btn className="ctrl" onClick={toQuestions}>
       <I.list size={18} />
       Questions
-    </button>
+    </Btn>
   );
   const resetBtn = (
-    <button className="ctrl" onClick={() => confirm("Reset the whole event? All answers, votes and scores are deleted (teams stay).") && act(resetEvent)}>
+    <Btn className="ctrl" onClick={() => confirm("Reset the whole event? All answers, votes and scores are deleted (teams stay).") && act(resetEvent)}>
       <I.reset size={18} />
       Reset
-    </button>
+    </Btn>
   );
   const STAGE_LABEL: Record<StageName, string> = {
     lobby: "Lobby",
@@ -229,6 +245,7 @@ function Host() {
     select: "Select",
     dialogue: "Story",
     answering: "Answering",
+    matches: "Matches",
     presenting: "Presenting",
     voting: "Voting",
     reveal: "Reveal",
@@ -257,93 +274,96 @@ function Host() {
         <ControlBar label={STAGE_LABEL[game.stage]}>
           <Sep />
           {game.stage === "lobby" && (
-            <button className="ctrl ctrl-primary" onClick={() => act(() => goTo(P, "rules"))}>
+            <Btn className="ctrl ctrl-primary" onClick={() => act(() => goTo(P, "rules"))}>
               Show rules
               <I.play />
-            </button>
+            </Btn>
           )}
           {game.stage === "rules" && (
             <>
-              <button className="ctrl" onClick={() => act(() => goTo(P, "lobby"))}>
+              <Btn className="ctrl" onClick={() => act(() => goTo(P, "lobby"))}>
                 <I.back />
                 Lobby
-              </button>
-              <button className="ctrl ctrl-primary" onClick={() => act(() => goTo(P, "select"))}>
+              </Btn>
+              <Btn className="ctrl ctrl-primary" onClick={() => act(() => goTo(P, "select"))}>
                 Start questions
                 <I.play />
-              </button>
+              </Btn>
             </>
           )}
           {game.stage === "select" && <span style={{ padding: "0 10px", fontSize: 16, fontWeight: 600, color: "#DCD5C8" }}>Click a card to start its story</span>}
           {game.stage === "dialogue" && (
             <>
-              <button className="ctrl" onClick={() => act(() => dialogueStep(P, -1))}>
+              <Btn className="ctrl" onClick={() => act(() => dialogueStep(P, -1))}>
                 <I.back />
                 Back
-              </button>
-              <button className="ctrl ctrl-primary" onClick={() => act(() => dialogueStep(P, 1))}>
-                {q && game.dialogue_index >= q.dialogue.length - 1 ? "Start answering" : "Next line"}
+              </Btn>
+              <Btn className="ctrl ctrl-primary" onClick={() => act(() => dialogueStep(P, 1))}>
+                {q && game.dialogue_index >= q.dialogue.length - 1 ? (q.kind === "pd" ? "Start matches" : "Start answering") : "Next line"}
                 <I.play />
-              </button>
+              </Btn>
             </>
           )}
           {timed && (
             <>
-              <button className={`ctrl ${paused ? "ctrl-on" : ""}`} onClick={() => act(() => togglePause(P))}>
+              <Btn className={`ctrl ${paused ? "ctrl-on" : ""}`} onClick={() => act(() => togglePause(P))}>
                 {paused ? <I.play /> : <I.pause />}
                 {paused ? "Resume" : "Pause"}
-              </button>
-              <button className="ctrl" onClick={() => act(() => addTime(P, 60))}>
+              </Btn>
+              <Btn className="ctrl" onClick={() => act(() => addTime(P, 60))}>
                 <I.plus size={16} />1 min
-              </button>
-              <button className={`ctrl ${game.stage === "answering" ? "" : "ctrl-primary"}`} onClick={() => act(() => advance(P))}>
+              </Btn>
+              <Btn className={`ctrl ${game.stage === "answering" ? "" : "ctrl-primary"}`} onClick={() => act(() => advance(P))}>
                 <I.end />
                 End now
-              </button>
-              <button className="ctrl ctrl-warn" onClick={() => act(() => skipToReveal(P))}>
+              </Btn>
+              <Btn className="ctrl ctrl-warn" onClick={() => act(() => skipToReveal(P))}>
                 Skip to reveal
-              </button>
+              </Btn>
               {game.stage === "answering" && q?.lockChoice && (
-                <button className={`ctrl ${game.show_extra ? "ctrl-on" : ""}`} onClick={() => act(() => toggleExtra(P))}>
+                <Btn className={`ctrl ${game.show_extra ? "ctrl-on" : ""}`} onClick={() => act(() => toggleExtra(P))}>
                   {game.show_extra ? "Hide table" : "Show table"}
-                </button>
+                </Btn>
               )}
             </>
           )}
           {game.stage === "reveal" && (
             <>
-              <button className="ctrl ctrl-primary" onClick={() => act(() => goTo(P, "leaderboard"))}>
+              <Btn className={`ctrl ${game.show_extra ? "ctrl-on" : ""}`} onClick={() => act(() => toggleExtra(P))}>
+                {game.show_extra ? "Hide the math" : "Show the math"}
+              </Btn>
+              <Btn className="ctrl ctrl-primary" onClick={() => act(() => goTo(P, "leaderboard"))}>
                 Leaderboard
                 <I.play />
-              </button>
-              <button className="ctrl ctrl-gold" onClick={() => act(() => goTo(P, "finale"))}>
+              </Btn>
+              <Btn className="ctrl ctrl-gold" onClick={() => act(() => goTo(P, "finale"))}>
                 <I.trophyOutline size={18} />
                 Finale
-              </button>
+              </Btn>
             </>
           )}
           {game.stage === "leaderboard" && (
             <>
-              <button className="ctrl ctrl-primary" onClick={() => act(() => goTo(P, "select"))}>
+              <Btn className="ctrl ctrl-primary" onClick={() => act(() => goTo(P, "select"))}>
                 Next question
                 <I.play />
-              </button>
-              <button className="ctrl ctrl-gold" onClick={() => act(() => goTo(P, "finale"))}>
+              </Btn>
+              <Btn className="ctrl ctrl-gold" onClick={() => act(() => goTo(P, "finale"))}>
                 <I.trophyOutline size={18} />
                 Finale
-              </button>
+              </Btn>
             </>
           )}
           {game.stage === "finale" && (
             <>
-              <button className="ctrl" onClick={() => (setFinaleRun((n) => n + 1), setFinaleDonePhase(-1))}>
+              <Btn className="ctrl" onClick={() => (setFinaleRun((n) => n + 1), setFinaleDonePhase(-1))}>
                 <I.reset size={18} />
                 Play the reveal
-              </button>
-              <button disabled={finaleDonePhase !== P} className={`ctrl ${finaleDonePhase === P ? "ctrl-primary" : ""}`} onClick={() => act(() => goTo(P, "final"))}>
+              </Btn>
+              <Btn disabled={finaleDonePhase !== P} className={`ctrl ${finaleDonePhase === P ? "ctrl-primary" : ""}`} onClick={() => act(() => goTo(P, "final"))}>
                 Show full leaderboard
                 <I.play />
-              </button>
+              </Btn>
             </>
           )}
           {!["lobby", "rules", "select", "leaderboard"].includes(game.stage) && (
@@ -361,8 +381,10 @@ function Host() {
 
 /* ---------------- stage screens ---------------- */
 
-function Lobby({ teams, participants, origin, onAdd, onRemove }: { teams: Team[]; participants: Participant[]; origin: string; onAdd: (n: string) => void; onRemove: (id: string) => void }) {
+function Lobby({ teams, participants, origin, onAdd, onRemove, onKick, busy }: { teams: Team[]; participants: Participant[]; origin: string; onAdd: (n: string) => void; onRemove: (id: string) => void; onKick: (id: string) => Promise<unknown>; busy: boolean }) {
   const [name, setName] = useState("");
+  const [kick, setKick] = useState<Participant | null>(null);
+  const kickTeam = teams.find((t) => t.id === kick?.team_id);
   return (
     <div className="paper" style={{ position: "absolute", inset: 0 }}>
       <HostHeader right="Round 2 · Case challenges" />
@@ -448,14 +470,57 @@ function Lobby({ teams, participants, origin, onAdd, onRemove }: { teams: Team[]
             </label>
             <div style={{ display: "flex", gap: 10 }}>
               <input id="newteam" maxLength={30} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Nash Bros" style={{ flex: 1, minWidth: 0, height: 52, boxSizing: "border-box", padding: "0 16px", border: `2.5px solid ${C.ink}`, borderRadius: 12, background: "#fff", color: C.ink, fontFamily: "inherit", fontSize: 20 }} />
-              <button type="submit" className="btn btn-dark" style={{ height: 52, padding: "0 18px", borderRadius: 12, fontSize: 19, boxShadow: "none" }}>
-                <I.plus size={18} />
+              <button type="submit" disabled={busy} aria-busy={busy || undefined} className="btn btn-dark" style={{ height: 52, padding: "0 18px", borderRadius: 12, fontSize: 19, boxShadow: "none" }}>
+                {busy ? <span className="gte-spinner" aria-hidden="true" /> : <I.plus size={18} />}
                 Add team
               </button>
             </div>
           </form>
         </div>
+        <div style={{ flex: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+          <h2 className="label" style={{ margin: 0, display: "flex", justifyContent: "space-between", fontSize: 18 }}>
+            <span>Players</span>
+            <span style={{ color: C.muted, fontSize: 15 }}>Click a name to kick</span>
+          </h2>
+          {participants.length ? (
+            <ul style={{ margin: 0, padding: "2px 4px 4px 2px", listStyle: "none", display: "flex", flexWrap: "wrap", gap: 8, maxHeight: 196, overflowY: "auto" }}>
+              {participants.map((p) => {
+                const ti = teams.findIndex((t) => t.id === p.team_id);
+                return (
+                  <li key={p.id} className="gte-pop">
+                    <button
+                      type="button"
+                      onClick={() => setKick(p)}
+                      aria-label={`Kick ${p.name}`}
+                      className="lift"
+                      style={{ height: 42, boxSizing: "border-box", padding: "0 12px 0 5px", display: "flex", alignItems: "center", gap: 8, border: `2px solid ${C.ink}`, borderRadius: 999, background: C.paper2, color: C.ink, fontFamily: "inherit", fontSize: 18, fontWeight: 800, cursor: "pointer" }}
+                    >
+                      {ti >= 0 ? <Token team={teams[ti]} index={ti} size={30} radius={999} border={2} /> : <span title="No team yet" style={{ width: 30, height: 30, boxSizing: "border-box", borderRadius: 999, border: `2px dashed ${C.faint}` }} />}
+                      <span style={{ maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
+                      <I.x size={13} style={{ color: C.muted }} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p style={{ margin: 0, fontSize: 20, color: C.muted }}>No one has joined yet.</p>
+          )}
+        </div>
       </section>
+      {kick && (
+        <ConfirmModal
+          title={`Kick ${kick.name}?`}
+          body={
+            <>
+              They&apos;ll be removed{kickTeam ? ` from ${kickTeam.name}` : ""} and sent back to the join screen. They can rejoin by scanning the QR code again.
+            </>
+          }
+          confirmLabel="Kick"
+          onConfirm={() => onKick(kick.id)}
+          onClose={() => setKick(null)}
+        />
+      )}
     </div>
   );
 }
@@ -535,7 +600,7 @@ function Rules() {
             </div>
           </RuleCard>
           <RuleCard n={6} delay={0.4}>
-            <p style={{ margin: 0 }}>Points add up across all questions. {b("Highest total wins!")}</p>
+            <p style={{ margin: 0 }}>Points add up across all questions (Cooperate or Defect scores its own way). {b("Highest total wins!")}</p>
             <svg width="84" height="84" viewBox="0 0 24 24" fill="none" stroke={C.ink} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M8 4h8v5a4 4 0 0 1-8 0z" fill={C.mari} />
               <path d="M8 6H5.5a2.5 2.5 0 0 0 2.6 3.6M16 6h2.5a2.5 2.5 0 0 1-2.6 3.6M12 13v4M8.5 20.5h7M9.5 17h5v3.5h-5z" />
@@ -547,8 +612,9 @@ function Rules() {
   );
 }
 
-function Select({ game, teams, members, busy, onStart, onAdd, onRemove }: { game: Game; teams: Team[]; members: (id: string) => Participant[]; busy: boolean; onStart: (id: string) => void; onAdd: (n: string) => void; onRemove: (id: string) => void }) {
+function Select({ game, teams, members, activeCount, busy, onStart, onAdd, onRemove }: { game: Game; teams: Team[]; members: (id: string) => Participant[]; activeCount: number; busy: boolean; onStart: (id: string) => void; onAdd: (n: string) => void; onRemove: (id: string) => void }) {
   const [name, setName] = useState("");
+  const [starting, setStarting] = useState("");
   const done = game.finished_question_ids;
   return (
     <div className="paper" style={{ position: "absolute", inset: 0 }}>
@@ -571,7 +637,8 @@ function Select({ game, teams, members, busy, onStart, onAdd, onRemove }: { game
                 key={x.id}
                 type="button"
                 disabled={played || busy}
-                onClick={() => onStart(x.id)}
+                onClick={() => (setStarting(x.id), onStart(x.id))}
+                aria-busy={(busy && starting === x.id) || undefined}
                 aria-label={`${x.code} ${x.title}${played ? ", played" : last ? ", play last" : ""}`}
                 className={`gte-pop ${played ? "" : "btn"}`}
                 style={{
@@ -598,7 +665,9 @@ function Select({ game, teams, members, busy, onStart, onAdd, onRemove }: { game
                   <span className="mono" style={{ fontSize: 60, fontWeight: 800, letterSpacing: "-0.05em", lineHeight: 0.9 }}>
                     {x.code}
                   </span>
-                  {!played && (
+                  {busy && starting === x.id ? (
+                    <span className="gte-spinner" aria-hidden="true" style={{ fontSize: 44 }} />
+                  ) : !played && (
                     <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d={QUESTION_ICONS[x.id]} />
                     </svg>
@@ -606,8 +675,8 @@ function Select({ game, teams, members, busy, onStart, onAdd, onRemove }: { game
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <span style={{ fontSize: 27, fontWeight: 800, lineHeight: 1.04, letterSpacing: "-0.02em" }}>{x.title}</span>
-                  <span className="label" style={{ fontSize: 14, letterSpacing: "0.1em", color: last ? "#BFB8AA" : C.muted }}>
-                    {x.topic}
+                  <span className="label" style={{ fontSize: 14, letterSpacing: "0.1em", color: x.kind === "pd" && !played && activeCount % 2 ? C.vermDark : last ? "#BFB8AA" : C.muted }}>
+                    {x.kind === "pd" && !played && activeCount % 2 ? `Needs an even number of teams (now ${activeCount})` : x.topic}
                   </span>
                 </div>
                 {played && (
@@ -676,9 +745,8 @@ function Answering({ q, game, active, idx, remaining, paused, table }: { q: Ques
           </span>
         </div>
         <h1 style={{ margin: "12px 0 0", fontSize: q.title.length > 26 ? 64 : 80, lineHeight: 0.95, fontWeight: 800, letterSpacing: "-0.045em" }}>{q.title}</h1>
-        <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: q.extra === "matrix" ? "minmax(0,1fr) 470px" : table ? "minmax(0,1fr) 520px" : "minmax(0,1fr)", gap: 32, alignItems: "start" }}>
+        <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: table ? "minmax(0,1fr) 520px" : "minmax(0,1fr)", gap: 32, alignItems: "start" }}>
           <Bullets items={q.summary} size={long ? 22 : 25} gap={long ? 10 : 14} />
-          {q.extra === "matrix" && <PayoffMatrix />}
           {table && <SurgeonTable table={table} />}
         </div>
         <p style={{ margin: "24px 0 0", fontSize: 33, lineHeight: 1.42, fontWeight: 800, letterSpacing: "-0.015em" }}>
@@ -734,14 +802,84 @@ function Answering({ q, game, active, idx, remaining, paused, table }: { q: Ques
   );
 }
 
+function Matches({ q, matches, teams, remaining, paused }: { q: Question; matches: Match[]; teams: Team[]; remaining: number | null; paused: boolean }) {
+  const finished = matches.filter((m) => m.round > PD_ROUNDS).length;
+  return (
+    <div className="paper" style={{ position: "absolute", inset: 0 }}>
+      <HostHeader right="Play on your phones" />
+      <div style={{ position: "absolute", left: 56, top: 108, width: 480, display: "flex", flexDirection: "column", gap: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <CodePill code={q.code} />
+          <span className="label" style={{ fontSize: 16, letterSpacing: "0.12em", color: C.muted }}>
+            How it works
+          </span>
+        </div>
+        <h1 style={{ margin: 0, fontSize: 60, lineHeight: 0.95, fontWeight: 800, letterSpacing: "-0.045em" }}>{q.title}</h1>
+        <Bullets items={q.summary} size={21} gap={10} dot={9} />
+        <PayoffMatrix />
+      </div>
+      <section style={{ position: "absolute", left: 588, right: 56, top: 104, display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <h2 className="label" style={{ margin: 0, display: "flex", alignItems: "center", gap: 10, fontSize: 18 }}>
+              <span className="gte-live" style={{ width: 12, height: 12, borderRadius: 999, background: C.verm }} />
+              Live matches
+            </h2>
+            <span className="mono" style={{ fontSize: 44, fontWeight: 800, letterSpacing: "-0.04em", lineHeight: 1 }}>
+              <span key={finished} className="gte-press" style={{ display: "inline-block" }}>
+                {finished}
+              </span>
+              <span style={{ color: C.faint }}> / </span>
+              {matches.length}
+              <span style={{ fontSize: 22, letterSpacing: 0 }}> finished</span>
+            </span>
+          </div>
+          <Ring ms={remaining} total={MATCH_SECONDS} size={150} paused={paused} fontSize={44} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: matches.length > 1 ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)", gap: 16, alignContent: "start" }}>
+          {matches.map((m) => (
+            <MatchCard key={m.id} m={m} teams={teams} compact={matches.length > 4} />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+const explainSize = (n: number) => (n > 1200 ? 19 : n > 600 ? 22 : n > 250 ? 26 : 32);
+
 function Presenting({ q, game, active, teams, remaining, paused }: { q: Question; game: Game; active: Team[]; teams: Team[]; remaining: number | null; paused: boolean }) {
-  const ti = teams.findIndex((t) => t.id === game.presenting_team_id);
+  const [pres, setPres] = useState<Presentation | null>(null);
+  const presenter = game.presenting_team_id;
+  useEffect(() => {
+    // retry a few times so one dropped request doesn't blank the screen for the whole presentation
+    let live = true;
+    const load = (tries: number) =>
+      getPresentation().then(
+        (p) => live && (p ? setPres(p) : tries > 0 && setTimeout(() => load(tries - 1), 1500)),
+        () => live && tries > 0 && setTimeout(() => load(tries - 1), 1500),
+      );
+    load(3);
+    return () => {
+      live = false;
+    };
+  }, [presenter]);
+  const ti = teams.findIndex((t) => t.id === presenter);
   const team = teams[ti];
   const tok = TOKENS[TOKENS.findIndex((t) => t.color === team?.color)] ?? TOKENS[Math.max(0, ti) % TOKENS.length];
-  const presented = game.presented_team_ids.filter((id) => id !== game.presenting_team_id);
+  const presented = game.presented_team_ids.filter((id) => id !== presenter);
   const upcoming = active.filter((t) => !game.presented_team_ids.includes(t.id));
-  const order = [...presented.map((id) => ({ id, s: "done" as const })), { id: game.presenting_team_id!, s: "cur" as const }, ...upcoming.map((t) => ({ id: t.id, s: "next" as const }))];
+  const order = [...presented.map((id) => ({ id, s: "done" as const })), { id: presenter!, s: "cur" as const }, ...upcoming.map((t) => ({ id: t.id, s: "next" as const }))];
   if (!team) return null;
+  const picks = pres?.picks ?? [];
+  const mine = picks.find((p) => p.teamId === team.id);
+  const myPick = !mine ? null : q.kind === "number" ? (mine.number !== null ? String(mine.number) : null) : mine.choice !== null ? `${LETTERS[mine.choice]} · ${q.choices[mine.choice]}` : null;
+  const explanation = pres?.explanation.trim() ?? "";
+  const unanswered = active.filter((t) => !picks.some((p) => p.teamId === t.id && (q.kind === "number" ? p.number !== null : p.choice !== null)));
+  const tokenOf = (id: string) => {
+    const k = teams.findIndex((t) => t.id === id);
+    return <Token key={id} team={teams[k]} index={k} size={30} radius={9} border={2} />;
+  };
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden", backgroundColor: tok.color, backgroundImage: "radial-gradient(rgba(23,22,28,0.12) 1.4px, transparent 1.8px)", backgroundSize: "16px 16px" }}>
       <svg className="gte-spin" width="1100" height="1100" viewBox="0 0 24 24" aria-hidden="true" style={{ position: "absolute", right: -300, top: -140, opacity: 0.09 }}>
@@ -760,25 +898,35 @@ function Presenting({ q, game, active, teams, remaining, paused }: { q: Question
           {q.code} · {q.title}
         </span>
       </header>
-      <div style={{ position: "absolute", left: 56, top: 138, width: 1020, display: "flex", flexDirection: "column", gap: 26 }}>
-        <span className="label" style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 12, height: 54, padding: "0 24px 0 18px", borderRadius: 999, background: C.ink, color: C.paper, fontSize: 20 }}>
+      <div style={{ position: "absolute", left: 56, width: 1000, top: 112, bottom: 236, display: "flex", flexDirection: "column", gap: 18 }}>
+        <span className="label" style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 12, height: 48, padding: "0 22px 0 16px", borderRadius: 999, background: C.ink, color: C.paper, fontSize: 18 }}>
           <span className="gte-wob" style={{ display: "flex" }}>
-            <I.mic size={24} />
+            <I.mic size={22} />
           </span>
           Now presenting
         </span>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 30 }}>
-          <span className="gte-pop" style={{ marginTop: 10 }}>
-            <Token team={team} index={ti} size={120} radius={30} border={4} inverted shadow={`7px 7px 0 ${C.ink}`} />
+        <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+          <span className="gte-pop">
+            <Token team={team} index={ti} size={92} radius={24} border={4} inverted shadow={`6px 6px 0 ${C.ink}`} />
           </span>
-          <h1 className="gte-drop" style={{ margin: 0, fontSize: team.name.length > 16 ? 112 : 150, lineHeight: 0.88, fontWeight: 800, letterSpacing: "-0.055em", textWrap: "balance" }}>
+          <h1 className="gte-drop" style={{ margin: 0, fontSize: team.name.length > 16 ? 72 : 96, lineHeight: 0.9, fontWeight: 800, letterSpacing: "-0.05em", textWrap: "balance" }}>
             {team.name}
           </h1>
         </div>
-        <p style={{ margin: 0, paddingLeft: 150, fontSize: 34, lineHeight: 1.25, fontWeight: 700 }}>60 seconds to explain your answer out loud.</p>
+        <section className="gte-pop" aria-label="Their submitted answer" style={{ flex: 1, minHeight: 0, boxSizing: "border-box", padding: "18px 26px 20px", display: "flex", flexDirection: "column", gap: 12, background: C.paper2, border: `3px solid ${C.ink}`, borderRadius: 22, boxShadow: `7px 7px 0 ${C.ink}`, animationDelay: ".1s" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <span className="label" style={{ fontSize: 15, letterSpacing: "0.12em", color: C.muted }}>
+              Their answer
+            </span>
+            <span style={{ padding: "4px 14px", borderRadius: 999, background: myPick ? C.ink : "transparent", border: myPick ? 0 : `2px dashed ${C.faint}`, color: myPick ? C.paper : C.muted, fontSize: 22, fontWeight: 800 }}>{myPick ?? "No answer submitted"}</span>
+          </div>
+          <p style={{ margin: 0, flex: 1, minHeight: 0, overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: explainSize(explanation.length), lineHeight: 1.35, fontWeight: 500, color: explanation ? C.ink : C.muted }}>
+            {pres === null ? "" : explanation ? `“${explanation}”` : "No written explanation. Over to you: explain it out loud!"}
+          </p>
+        </section>
       </div>
-      <div style={{ position: "absolute", left: 56, bottom: 120, display: "flex", flexDirection: "column", gap: 14 }}>
-        <span className="label" style={{ fontSize: 20, letterSpacing: "0.12em" }}>
+      <div style={{ position: "absolute", left: 56, bottom: 110, display: "flex", flexDirection: "column", gap: 12 }}>
+        <span className="label" style={{ fontSize: 18, letterSpacing: "0.12em" }}>
           Team {presented.length + 1} of {order.length}
         </span>
         <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", alignItems: "center", gap: 14 }}>
@@ -787,22 +935,64 @@ function Presenting({ q, game, active, teams, remaining, paused }: { q: Question
             const ix = teams.findIndex((x) => x.id === o.id);
             const tk = TOKENS[TOKENS.findIndex((x) => x.color === t?.color)] ?? TOKENS[Math.max(0, ix) % TOKENS.length];
             const cur = o.s === "cur";
-            const size = cur ? 72 : 54;
+            const size = cur ? 64 : 48;
             return (
               <li
                 key={o.id}
                 aria-label={`${t?.name}, ${o.s === "done" ? "presented" : cur ? "presenting now" : "up next"}`}
-                style={{ width: size, height: size, display: "grid", placeItems: "center", boxSizing: "border-box", borderRadius: 16, border: cur ? `4px solid ${C.ink}` : o.s === "done" ? `2.5px solid ${C.ink}` : `2.5px dashed ${C.ink}`, background: o.s === "done" ? tk.color : cur ? C.paper2 : "transparent", boxShadow: cur ? `5px 5px 0 ${C.ink}` : "none" }}
+                style={{ width: size, height: size, display: "grid", placeItems: "center", boxSizing: "border-box", borderRadius: 14, border: cur ? `4px solid ${C.ink}` : o.s === "done" ? `2.5px solid ${C.ink}` : `2.5px dashed ${C.ink}`, background: o.s === "done" ? tk.color : cur ? C.paper2 : "transparent", boxShadow: cur ? `5px 5px 0 ${C.ink}` : "none" }}
               >
-                <Glyph d={tk.d} size={cur ? 38 : 26} color={o.s === "next" ? "rgba(23,22,28,0.45)" : C.ink} />
+                <Glyph d={tk.d} size={cur ? 34 : 24} color={o.s === "next" ? "rgba(23,22,28,0.45)" : C.ink} />
               </li>
             );
           })}
         </ol>
       </div>
-      <div style={{ position: "absolute", right: 64, top: 170 }}>
-        <Ring ms={remaining} total={PRESENT_SECONDS} size={400} paused={paused} fontSize={148} onColor states={false} />
-      </div>
+      <aside style={{ position: "absolute", right: 56, top: 108, width: 440, display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
+        <Ring ms={remaining} total={PRESENT_SECONDS} size={236} paused={paused} fontSize={88} onColor states={false} tag="to explain" />
+        <section aria-label="Every team's pick" style={{ width: "100%", boxSizing: "border-box", padding: "14px 16px 16px", display: "flex", flexDirection: "column", gap: 10, background: C.paper2, border: `2.5px solid ${C.ink}`, borderRadius: 18, boxShadow: `5px 5px 0 ${C.ink}` }}>
+          <h2 className="label" style={{ margin: 0, fontSize: 14, letterSpacing: "0.12em" }}>
+            What every team picked
+          </h2>
+          {q.kind === "number" ? (
+            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {[...picks].filter((p) => p.number !== null).sort((a, b) => a.number! - b.number!).map((p) => (
+                <li key={p.teamId} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 3px", border: `2px solid ${p.teamId === team.id ? C.ink : C.line}`, borderRadius: 999 }}>
+                  {tokenOf(p.teamId)}
+                  <span className="mono" style={{ fontSize: 22, fontWeight: 800 }}>
+                    {p.number}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+              {q.choices.map((c, i) => {
+                const who = picks.filter((p) => p.choice === i);
+                return (
+                  <li key={c} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 36, opacity: who.length ? 1 : 0.55 }}>
+                    <span className="mono" style={{ width: 30, height: 30, flex: "none", display: "grid", placeItems: "center", borderRadius: 8, background: C.ink, color: C.paper, fontSize: 16, fontWeight: 800 }}>
+                      {LETTERS[i]}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 16, lineHeight: 1.15, fontWeight: 700, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c}</span>
+                    <span style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 4, maxWidth: 170 }}>
+                      {who.length ? who.map((p) => tokenOf(p.teamId)) : <span className="mono" style={{ fontSize: 16, fontWeight: 800, color: C.muted }}>0</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+          {pres && unanswered.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 8, borderTop: `2px solid ${C.line}` }}>
+              <span className="label" style={{ flex: 1, fontSize: 12, letterSpacing: "0.1em", color: C.muted }}>
+                No answer
+              </span>
+              {unanswered.map((t) => tokenOf(t.id))}
+            </div>
+          )}
+        </section>
+      </aside>
     </div>
   );
 }

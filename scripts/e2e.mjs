@@ -80,6 +80,13 @@ console.log("✓ RLS hides submissions from phones (3 rows exist)");
 const order = [];
 while ((g = await G()).stage !== "reveal") {
   if (g.stage === "presenting") {
+    if (!order.length) {
+      assert.ok((await call("getPresentation", [], { noCookie: true })).thrown, "presentation is organizer-only");
+      const pres = await call("getPresentation");
+      assert.equal(pres.picks.length, 3);
+      assert.ok(pres.explanation.length > 0, "presenter explanation shown");
+      console.log("✓ presentation: every pick + presenter's explanation, organizer-only");
+    }
     order.push(g.presenting_team_id);
     const own = P[teams.findIndex((t) => t.id === g.presenting_team_id)];
     assert.ok((await call("setTeam", [P[0], B])).error, "no switching during presentation");
@@ -122,11 +129,57 @@ const r2 = await call("getResults");
 assert.equal(r2.reveal.rows.find((x) => x.teamId === A).correct, true);
 assert.equal(r2.standings[0].id, A); console.log("✓ standings:", r2.standings.map((s) => `${s.name}=${s.total}`).join(" "));
 
+// 2B head-to-head matches
+g = await G(); ok(await call("goTo", [g.phase, "leaderboard"]), "→ leaderboard");
+g = await G(); ok(await call("goTo", [g.phase, "select"]), "→ select");
+g = await G(); assert.match((await call("startQuestion", [g.phase, "2b"])).error, /even number/); console.log("✓ 2B refuses an odd number of active teams");
+P.push(crypto.randomUUID());
+ok(await call("joinEvent", [P[3], "Player3"]), "join 3"); ok(await call("setTeam", [P[3], D]), "team D");
+g = await G(); ok(await call("startQuestion", [g.phase, "2b"]), "start 2B (4 teams)");
+while ((g = await G()).stage === "dialogue") await call("dialogueStep", [g.phase, 1]);
+assert.equal(g.stage, "matches"); console.log("✓ dialogue → matches");
+let ms = (await anon.from("matches").select("*").order("id")).data;
+assert.equal(ms.length, 2); assert.deepEqual(ms.flatMap((m) => [m.a, m.b]).sort(), [A, B, C, D].sort());
+console.log("✓ 4 teams paired into 2 matches, readable by phones");
+const pOf = (team) => P[teams.findIndex((t) => t.id === team)];
+const [m0, m1] = ms;
+assert.ok((await call("setTeam", [pOf(m0.a), m0.b])).error, "no switching during matches");
+ok(await call("playMove", [pOf(m0.a), 1, 0]), "m0.a cooperates");
+assert.deepEqual((await anon.from("match_moves").select("*")).data, []);
+assert.ok((await admin.from("match_moves").select("*")).data.length === 1);
+let m = (await anon.from("matches").select("*").eq("id", m0.id).single()).data;
+assert.equal(m.a_ready, true); assert.deepEqual(m.a_moves, []); console.log("✓ pending move hidden from phones, only 'ready' is public");
+assert.ok((await call("playMove", [pOf(m0.b), 2, 1])).error, "wrong round rejected"); console.log("✓ stale round rejected");
+ok(await call("playMove", [pOf(m0.b), 1, 1]), "m0.b defects");
+m = (await anon.from("matches").select("*").eq("id", m0.id).single()).data;
+assert.deepEqual([m.round, m.a_score, m.b_score, m.a_moves, m.b_moves, m.a_ready, m.b_ready], [2, 0, 5, [0], [1], false, false]);
+console.log("✓ round resolved: C vs D → 0 : 5");
+// both teams of match 1 press at the same moment: resolves exactly once
+await Promise.all([call("playMove", [pOf(m1.a), 1, 0]), call("playMove", [pOf(m1.b), 1, 0])]);
+m = (await anon.from("matches").select("*").eq("id", m1.id).single()).data;
+assert.deepEqual([m.round, m.a_score, m.b_score], [2, 3, 3]); console.log("✓ simultaneous moves resolve once: 3 : 3");
+for (let r = 2; r <= 4; r++) for (const x of [m0, m1]) { ok(await call("playMove", [pOf(x.a), r, 0]), `r${r} a`); await call("playMove", [pOf(x.b), r, x === m0 ? 1 : 0]); }
+g = await G(); assert.equal(g.stage, "reveal", "auto-reveal when all matches finish"); console.log("✓ all matches finished → reveal");
+assert.ok((await call("playMove", [pOf(m0.a), 5, 0])).error, "no moves after close");
+const r3 = await call("getResults");
+assert.equal(r3.reveal.matches.length, 2); assert.equal(r3.reveal.math.length > 0, true);
+const p3 = Object.fromEntries(r3.reveal.rows.map((x) => [x.teamId, x.points]));
+assert.deepEqual([p3[m0.a], p3[m0.b], p3[m1.a], p3[m1.b]], [0, 20, 12, 12]);
+console.log("✓ 2B points = raw match totals:", [p3[m0.a], p3[m0.b], p3[m1.a], p3[m1.b]]);
+
+// kick
+assert.ok((await call("kickParticipant", [publicIds[0]], { noCookie: true })).thrown, "kick is organizer-only");
+const kickId = (await anon.from("participants").select("id, name").eq("name", "Player3").single()).data.id;
+ok(await call("kickParticipant", [kickId]), "kick Player3");
+assert.equal((await anon.from("participants").select("id").eq("id", kickId)).data.length, 0);
+assert.ok((await call("setTeam", [P[3], D])).error, "kicked phone must rejoin first"); console.log("✓ kicked player removed and must rejoin");
+
 g = await G(); ok(await call("goTo", [g.phase, "finale"]), "→ finale");
 g = await G(); ok(await call("goTo", [g.phase, "final"]), "→ final");
 
 // leave clean
 ok(await call("resetEvent"), "reset");
+assert.equal((await admin.from("matches").select("id")).data.length, 0, "reset clears matches");
 for (const t of teams) await call("removeTeam", [t.id]);
 await admin.from("participants").delete().in("id", publicIds);
 console.log("\nALL E2E CHECKS PASSED");

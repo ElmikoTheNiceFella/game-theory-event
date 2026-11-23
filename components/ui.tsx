@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
 import { C, tokenFor } from "@/lib/theme";
 
 /* ---------------- icons (inline stroke/fill SVG, never emoji) ---------------- */
@@ -415,5 +415,65 @@ export function Confetti({ pieces, edge = true }: { pieces: ReturnType<typeof co
         />
       ))}
     </div>
+  );
+}
+
+/* ---------------- buttons & dialogs ---------------- */
+
+/** Button for async actions: shows a spinner and ignores presses until the action settles. */
+export function Btn({ onClick, children, disabled, ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> & { onClick: () => unknown }) {
+  const [pending, setPending] = useState(false);
+  return (
+    <button
+      type="button"
+      {...rest}
+      disabled={disabled || pending}
+      aria-busy={pending || undefined}
+      onClick={async () => {
+        setPending(true);
+        try {
+          await onClick();
+        } finally {
+          setPending(false);
+        }
+      }}
+    >
+      {pending && <span className="gte-spinner" aria-hidden="true" />}
+      {children}
+    </button>
+  );
+}
+
+/** Native modal <dialog>: focus trap, Esc and backdrop for free. Calls onClose however it closes. */
+export function ConfirmModal({ title, body, confirmLabel, onConfirm, onClose }: { title: string; body: ReactNode; confirmLabel: string; onConfirm: () => Promise<unknown>; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+  return (
+    <dialog ref={ref} onClose={onClose} aria-labelledby="gte-modal-title" className="gte-modal gte-pop" style={{ width: "min(460px, calc(100vw - 32px))", boxSizing: "border-box", margin: "auto", padding: 0, border: `3px solid ${C.ink}`, borderRadius: 22, background: C.paper2, color: C.ink, boxShadow: `8px 8px 0 ${C.ink}` }}>
+      <div style={{ padding: "24px 26px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <h2 id="gte-modal-title" style={{ margin: 0, fontSize: 28, lineHeight: 1.05, fontWeight: 800, letterSpacing: "-0.03em" }}>
+          {title}
+        </h2>
+        <div style={{ fontSize: 17, lineHeight: 1.4, color: C.ink2 }}>{body}</div>
+        <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end", gap: 12 }}>
+          <button type="button" className="btn btn-paper" onClick={() => ref.current?.close()} style={{ height: 50, padding: "0 20px", fontSize: 18 }}>
+            Cancel
+          </button>
+          <Btn
+            className="btn btn-primary"
+            onClick={async () => {
+              await onConfirm();
+              ref.current?.close();
+            }}
+            style={{ height: 50, padding: "0 20px", fontSize: 18 }}
+          >
+            {confirmLabel}
+          </Btn>
+        </div>
+      </div>
+    </dialog>
   );
 }
