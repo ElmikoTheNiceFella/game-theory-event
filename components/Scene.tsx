@@ -170,7 +170,7 @@ function Bomber() {
       <rect x="328" y="44" width="960" height="520" rx="22" fill={C.ink} />
       <rect x="320" y="36" width="960" height="520" rx="22" fill="#1E3399" {...K} />
       <rect x="320" y="36" width="960" height="520" rx="22" fill="url(#gte-blueprint)" />
-      <T x={480} y={82} size={22} fill={C.mari} font="mono" spacing={3}>
+      <T x={1120} y={82} size={22} fill={C.mari} font="mono" spacing={3}>
         HIT MAP · RETURNED
       </T>
       <g transform="translate(800 312) scale(0.92)">
