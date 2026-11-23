@@ -36,3 +36,24 @@ export function scoreQuestion(
   }
   return out;
 }
+
+/** 2B: each team scores its raw match total (no win bonus, no votes). */
+export function matchScores(teamIds: string[], matches: { a: string; b: string; a_score: number; b_score: number }[]): Record<string, TeamScore> {
+  const out: Record<string, TeamScore> = {};
+  for (const t of teamIds) {
+    const m = matches.find((x) => x.a === t || x.b === t);
+    out[t] = { correct: false, voteAvg: 0, votes: 0, points: m ? (m.a === t ? m.a_score : m.b_score) : 0 };
+  }
+  return out;
+}
+
+/** Random head-to-head pairs; null when the team count is odd or below 2. */
+export function pairUp(teamIds: string[], rand = Math.random): [string, string][] | null {
+  if (teamIds.length < 2 || teamIds.length % 2) return null;
+  const s = [...teamIds];
+  for (let i = s.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [s[i], s[j]] = [s[j], s[i]];
+  }
+  return Array.from({ length: s.length / 2 }, (_, i) => [s[2 * i], s[2 * i + 1]]);
+}
