@@ -108,7 +108,7 @@ export default function ParticipantPage() {
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <div className="paper-sm" style={{ minHeight: "100dvh" }}>
+    <div className="paper-sm" style={{ minHeight: "100dvh", overflowX: "clip" }}>
       <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100dvh", display: "flex", flexDirection: "column" }}>{children}</div>
     </div>
   );
@@ -978,8 +978,8 @@ function PhoneReveal({ q, results, team, teamIndex, teams, showMath }: { q: Ques
         <span className="mono" style={{ padding: "2px 8px", borderRadius: 7, background: C.ink, color: C.paper, fontSize: 14, fontWeight: 800 }}>
           {q.code}
         </span>
-        <span style={{ fontSize: 16, fontWeight: 800 }}>{q.title}</span>
-        <span className="mono gte-stamp" style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 10px", borderRadius: 999, background: C.cobalt, color: C.paper, fontSize: 12, fontWeight: 800, letterSpacing: "0.12em" }}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 16, lineHeight: 1.15, fontWeight: 800 }}>{q.title}</span>
+        <span className="mono gte-stamp" style={{ flex: "none", marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 10px", borderRadius: 999, background: C.cobalt, color: C.paper, fontSize: 12, fontWeight: 800, letterSpacing: "0.12em" }}>
           <I.check size={13} />
           ANSWER
         </span>
