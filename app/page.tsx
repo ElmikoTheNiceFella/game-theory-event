@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
-import { castVote, getMySubmission, joinEvent, myId, setTeam, submitAnswer, type Results } from "./actions";
+import { castVote, getMySubmission, joinEvent, myId, playMove, setTeam, submitAnswer, type Results } from "./actions";
 import { useGame, useRemaining, useResults } from "@/lib/useGame";
 import { QUESTIONS, questionById, RULES, type Question } from "@/lib/questions";
-import { ANSWER_SECONDS, PRESENT_SECONDS, VOTE_SECONDS, type Game, type Participant, type Team } from "@/lib/types";
+import { ANSWER_SECONDS, MATCH_SECONDS, PD_ROUNDS, PRESENT_SECONDS, VOTE_SECONDS, type Game, type Match, type Participant, type Team } from "@/lib/types";
 import { C, LETTERS, TOKENS, fmt1, tokenFor } from "@/lib/theme";
-import { PayoffMatrix, PhoneLeaderboard, PlotTwist } from "@/components/Panels";
-import { Glyph, I, MiniRing, Ring, TeamPill, Token, clock } from "@/components/ui";
+import { MOVE, MathCard, MoveCells, PAYOFF, PayoffMatrix, PhoneLeaderboard, PlotTwist, matchSide } from "@/components/Panels";
+import { Btn, Glyph, I, MiniRing, Ring, TeamPill, Token, clock } from "@/components/ui";
 
 const store = {
   get: (k: string) => {
@@ -41,7 +41,7 @@ const getPid = () => {
 const noSubscribe = () => () => {};
 
 export default function ParticipantPage() {
-  const { game, teams, participants } = useGame();
+  const { game, teams, participants, matches } = useGame();
   const pid = useSyncExternalStore(noSubscribe, getPid, () => null);
   const [publicId, setPublicId] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
@@ -58,7 +58,7 @@ export default function ParticipantPage() {
   if (!game || !pid || !publicId) return <Shell>{null}</Shell>;
   if (!me) return <Join pid={pid} />;
 
-  const locked = game.stage === "presenting" || game.stage === "voting";
+  const locked = game.stage === "presenting" || game.stage === "voting" || game.stage === "matches";
   const pickTeam = async (teamId: string | null) => {
     const r = await setTeam(pid, teamId);
     if (r.error) setErr(r.error);
@@ -78,8 +78,8 @@ export default function ParticipantPage() {
             <TeamPill team={myTeam} index={myIndex} />
             <button
               type="button"
-              onClick={() => (locked && !picking ? setErr("Wait until the presentation is over to switch teams.") : setPicking(!picking))}
-              title={locked ? "Switching is paused during presentations" : undefined}
+              onClick={() => (locked && !picking ? setErr(game.stage === "matches" ? "Wait until the matches are over to switch teams." : "Wait until the presentation is over to switch teams.") : setPicking(!picking))}
+              title={locked ? "Switching is paused right now" : undefined}
               style={{ minHeight: 44, display: "flex", alignItems: "center", padding: "0 10px", border: 0, background: "transparent", fontFamily: "inherit", fontSize: 15, fontWeight: 800, color: locked && !picking ? C.faint : C.cobalt, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}
             >
               {picking ? "Cancel" : "Switch"}
@@ -99,7 +99,7 @@ export default function ParticipantPage() {
         {showPicker ? (
           <TeamPicker teams={teams} participants={participants} current={myTeam?.id ?? null} onPick={pickTeam} error={err} />
         ) : (
-          <StageView game={game} teams={teams} participants={participants} pid={pid} me={me} myTeam={myTeam} myIndex={myIndex} />
+          <StageView game={game} teams={teams} participants={participants} matches={matches} pid={pid} me={me} myTeam={myTeam} myIndex={myIndex} />
         )}
       </div>
     </Shell>
@@ -163,8 +163,9 @@ function Join({ pid }: { pid: string }) {
           style={{ display: "flex", flexDirection: "column", gap: 10 }}
           onSubmit={async (e) => {
             e.preventDefault();
+            if (busy) return;
             setBusy(true);
-            const r = await joinEvent(pid, name);
+            const r = await joinEvent(pid, name).catch(() => ({ error: "Couldn't join. Check your connection and try again." }));
             setBusy(false);
             if (r.error) setErr(r.error);
           }}
@@ -183,7 +184,8 @@ function Join({ pid }: { pid: string }) {
             style={{ height: 60, boxSizing: "border-box", padding: "0 18px", border: `2.5px solid ${C.ink}`, borderRadius: 14, background: "#fff", color: C.ink, fontFamily: "inherit", fontSize: 22, fontWeight: 600 }}
           />
           <span style={{ fontSize: 14, color: C.muted }}>Up to 24 characters. Teammates will see it.</span>
-          <button type="submit" disabled={!name.trim() || busy} className="btn btn-primary" style={{ marginTop: 14, height: 60, borderRadius: 14, fontSize: 21 }}>
+          <button type="submit" disabled={!name.trim() || busy} aria-busy={busy || undefined} className="btn btn-primary" style={{ marginTop: 14, height: 60, borderRadius: 14, fontSize: 21 }}>
+            {busy && <span className="gte-spinner" aria-hidden="true" />}
             Join
             <I.arrow size={20} />
           </button>
@@ -200,7 +202,7 @@ function Join({ pid }: { pid: string }) {
 
 /* ---------------- team picker ---------------- */
 
-function TeamPicker({ teams, participants, current, onPick, error }: { teams: Team[]; participants: Participant[]; current: string | null; onPick: (id: string | null) => void; error: string }) {
+function TeamPicker({ teams, participants, current, onPick, error }: { teams: Team[]; participants: Participant[]; current: string | null; onPick: (id: string | null) => Promise<void>; error: string }) {
   return (
     <main style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, padding: "22px 20px 24px" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -221,8 +223,7 @@ function TeamPicker({ teams, participants, current, onPick, error }: { teams: Te
               const n = participants.filter((p) => p.team_id === t.id).length;
               return (
                 <li key={t.id} className="gte-rowin" style={{ animationDelay: `${i * 0.05}s` }}>
-                  <button
-                    type="button"
+                  <Btn
                     onClick={() => onPick(t.id)}
                     aria-pressed={mine}
                     className="token-hover lift"
@@ -238,15 +239,15 @@ function TeamPicker({ teams, participants, current, onPick, error }: { teams: Te
                     <span className="mono" style={{ flex: "none", fontSize: 13, fontWeight: 800 }}>
                       {n === 0 ? "empty" : n === 1 ? "1 player" : `${n} players`}
                     </span>
-                  </button>
+                  </Btn>
                 </li>
               );
             })}
           </ul>
           {current && (
-            <button type="button" onClick={() => onPick(null)} style={{ alignSelf: "center", minHeight: 44, padding: "0 16px", border: 0, background: "transparent", color: C.cobalt, fontFamily: "inherit", fontSize: 16, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
+            <Btn onClick={() => onPick(null)} style={{ alignSelf: "center", minHeight: 44, padding: "0 16px", display: "flex", alignItems: "center", gap: 8, border: 0, background: "transparent", color: C.cobalt, fontFamily: "inherit", fontSize: 16, fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
               Leave my team
-            </button>
+            </Btn>
           )}
         </>
       ) : (
@@ -266,7 +267,7 @@ function TeamPicker({ teams, participants, current, onPick, error }: { teams: Te
 
 /* ---------------- stages ---------------- */
 
-function StageView({ game, teams, participants, pid, me, myTeam, myIndex }: { game: Game; teams: Team[]; participants: Participant[]; pid: string; me: Participant; myTeam: Team; myIndex: number }) {
+function StageView({ game, teams, participants, matches, pid, me, myTeam, myIndex }: { game: Game; teams: Team[]; participants: Participant[]; matches: Match[]; pid: string; me: Participant; myTeam: Team; myIndex: number }) {
   const q = questionById(game.question_id);
   const remaining = useRemaining(game);
   const results = useResults(game);
@@ -367,17 +368,24 @@ function StageView({ game, teams, participants, pid, me, myTeam, myIndex }: { ga
                 {q.title}
               </span>
             )}
-            <p style={{ margin: 0, fontSize: 17, lineHeight: 1.35, color: C.ink2 }}>The story plays on the projector. Answering opens on your phone right after.</p>
+            <p style={{ margin: 0, fontSize: 17, lineHeight: 1.35, color: C.ink2 }}>The story plays on the projector. {q?.kind === "pd" ? "Your match starts" : "Answering opens"} on your phone right after.</p>
           </div>
         </main>
       );
     case "answering":
       return q ? (
         <>
-          <TimerStrip ms={remaining} paused={paused} />
+          <TimerStrip ms={remaining} paused={paused} total={ANSWER_SECONDS} />
           <AnswerForm key={q.id} q={q} pid={pid} submitted={game.submitted_team_ids.includes(myTeam.id)} />
         </>
       ) : null;
+    case "matches":
+      return (
+        <>
+          <TimerStrip ms={remaining} paused={paused} total={MATCH_SECONDS} />
+          <MatchPlay pid={pid} match={matches.find((m) => m.a === myTeam.id || m.b === myTeam.id)} teams={teams} myTeam={myTeam} myIndex={myIndex} />
+        </>
+      );
     case "presenting":
       return mine ? (
         <main style={{ ...centered, backgroundColor: tokenFor(myTeam, myIndex).color, backgroundImage: "radial-gradient(rgba(23,22,28,.12) 1px, transparent 1.4px)", backgroundSize: "14px 14px" }}>
@@ -455,7 +463,7 @@ function StageView({ game, teams, participants, pid, me, myTeam, myIndex }: { ga
         <VoteForm key={game.presenting_team_id} pid={pid} team={presenting} teamIndex={pIndex} voted={game.voted_team_ids.includes(myTeam.id)} remaining={remaining} />
       );
     case "reveal":
-      return q ? <PhoneReveal q={q} results={results} team={myTeam} teamIndex={myIndex} /> : null;
+      return q ? <PhoneReveal q={q} results={results} team={myTeam} teamIndex={myIndex} teams={teams} showMath={game.show_extra} /> : null;
     case "leaderboard":
     case "final":
       return results ? <PhoneLeaderboard standings={results.standings} final={game.stage === "final"} mine={myTeam.id} playedCount={game.finished_question_ids.length} /> : null;
@@ -488,20 +496,20 @@ function StageView({ game, teams, participants, pid, me, myTeam, myIndex }: { ga
 }
 
 /** Answer timer strip: paper → marigold under half → vermilion in the last fifth. */
-function TimerStrip({ ms, paused }: { ms: number | null; paused: boolean }) {
+function TimerStrip({ ms, paused, total }: { ms: number | null; paused: boolean; total: number }) {
   if (ms === null) return null;
-  const f = ms / (ANSWER_SECONDS * 1000);
+  const f = ms / (total * 1000);
   const hurry = !paused && f <= 0.5;
   const last = !paused && f <= 0.2;
   const bg = last ? C.verm : hurry ? C.mari : C.paper2;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", background: bg, borderBottom: `2px solid ${C.ink}`, transition: "background 400ms ease" }}>
-      <MiniRing ms={Math.min(ms, ANSWER_SECONDS * 1000)} total={ANSWER_SECONDS} track={hurry ? "rgba(23,22,28,0.2)" : C.line} />
+      <MiniRing ms={Math.min(ms, total * 1000)} total={total} track={hurry ? "rgba(23,22,28,0.2)" : C.line} />
       <span style={{ display: "flex", flexDirection: "column" }}>
         <span className={`mono ${last ? "gte-pulse" : ""}`} style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-0.04em", lineHeight: 1 }}>
           {clock(ms)}
         </span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: hurry ? C.ink : C.muted }}>{paused ? "paused" : ms < 60000 ? "seconds left" : "left to answer"}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: hurry ? C.ink : C.muted }}>{paused ? "paused" : ms < 60000 ? "seconds left" : total === MATCH_SECONDS ? "left to play" : "left to answer"}</span>
       </span>
       <span className="label" style={{ marginLeft: "auto", fontSize: 12, letterSpacing: "0.12em", textAlign: "right", color: hurry ? C.ink : C.muted, lineHeight: 1.4 }}>
         {paused ? (
@@ -517,6 +525,12 @@ function TimerStrip({ ms, paused }: { ms: number | null; paused: boolean }) {
             Under half
             <br />
             the time left
+          </>
+        ) : total === MATCH_SECONDS ? (
+          <>
+            {PD_ROUNDS} rounds
+            <br />
+            per match
           </>
         ) : (
           <>
@@ -565,9 +579,10 @@ function AnswerForm({ q, pid, submitted }: { q: Question; pid: string; submitted
   }, [pid, submitted]);
 
   const send = async (lockOnly = false) => {
+    if (busy) return;
     if (!lockOnly && !explanation.trim()) return setErr("Add an explanation before submitting.");
     setBusy(true);
-    const r = await submitAnswer(pid, { choice, number: q.kind === "number" ? num : null, explanation: lockOnly ? "" : explanation });
+    const r = await submitAnswer(pid, { choice, number: q.kind === "number" ? num : null, explanation: lockOnly ? "" : explanation }).catch(() => ({ error: "Couldn't send. Check your connection and try again." }));
     setBusy(false);
     if (r.error) return setErr(r.error);
     setErr("");
@@ -605,7 +620,6 @@ function AnswerForm({ q, pid, submitted }: { q: Question; pid: string; submitted
             </li>
           ))}
         </ul>
-        {q.extra === "matrix" && <PayoffMatrix phone />}
         <p style={{ margin: "2px 0 0", fontSize: 20, lineHeight: 1.45, fontWeight: 800 }}>
           <mark className="hl">{q.prompt}</mark>
         </p>
@@ -707,8 +721,8 @@ function AnswerForm({ q, pid, submitted }: { q: Question; pid: string; submitted
 
       {needsLock ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <button type="button" disabled={choice === null || busy} onClick={() => send(true)} className="btn btn-dark shadow-verm" style={{ height: 60, fontSize: 20 }}>
-            <I.lock size={22} />
+          <button type="button" disabled={choice === null || busy} aria-busy={busy || undefined} onClick={() => send(true)} className="btn btn-dark shadow-verm" style={{ height: 60, fontSize: 20 }}>
+            {busy ? <span className="gte-spinner" aria-hidden="true" /> : <I.lock size={22} />}
             Lock in our pick
           </button>
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.4, textAlign: "center", color: C.muted }}>Once locked, your team can&apos;t change it. Then you&apos;ll see why it matters.</p>
@@ -742,8 +756,9 @@ function AnswerForm({ q, pid, submitted }: { q: Question; pid: string; submitted
             </div>
           </section>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <button type="button" disabled={busy || (q.kind === "mcq" && choice === null)} onClick={() => send()} className={`btn ${isSubmitted ? "btn-paper" : "btn-primary"}`} style={{ height: 60, fontSize: 20 }}>
-              {isSubmitted ? "Update answer" : "Submit answer"}
+            <button type="button" disabled={busy || (q.kind === "mcq" && choice === null)} aria-busy={busy || undefined} onClick={() => send()} className={`btn ${isSubmitted ? "btn-paper" : "btn-primary"}`} style={{ height: 60, fontSize: 20 }}>
+              {busy && <span className="gte-spinner" aria-hidden="true" />}
+              {busy ? "Sending…" : isSubmitted ? "Update answer" : "Submit answer"}
             </button>
             {isSubmitted ? (
               <SubmittedNote>
@@ -786,21 +801,20 @@ function VoteForm({ pid, team, teamIndex, voted, remaining }: { pid: string; tea
         {Array.from({ length: 11 }, (_, v) => {
           const on = score === v;
           return (
-            <button
+            <Btn
               key={v}
-              type="button"
               role="radio"
               aria-checked={on}
               onClick={async () => {
                 setScore(v);
-                const r = await castVote(pid, v);
+                const r = await castVote(pid, v).catch(() => ({ error: "Couldn't send your vote. Try again." }));
                 setErr(r.error ?? "");
               }}
               className={`mono ${on ? "gte-press" : "lift"}`}
-              style={{ height: 70, display: "grid", placeItems: "center", border: `2.5px solid ${C.ink}`, borderRadius: 16, background: on ? C.ink : C.paper2, color: on ? C.mari : C.ink, boxShadow: on ? `0 0 0 3px ${C.paper}, 0 0 0 5px ${C.ink}` : `3px 3px 0 ${C.ink}`, fontSize: 30, fontWeight: 800, cursor: "pointer" }}
+              style={{ height: 70, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: `2.5px solid ${C.ink}`, borderRadius: 16, background: on ? C.ink : C.paper2, color: on ? C.mari : C.ink, boxShadow: on ? `0 0 0 3px ${C.paper}, 0 0 0 5px ${C.ink}` : `3px 3px 0 ${C.ink}`, fontSize: 30, fontWeight: 800, cursor: "pointer" }}
             >
               {v}
-            </button>
+            </Btn>
           );
         })}
       </div>
@@ -823,10 +837,130 @@ function VoteForm({ pid, team, teamIndex, voted, remaining }: { pid: string; tea
   );
 }
 
-function PhoneReveal({ q, results, team, teamIndex }: { q: Question; results: Results | null; team: Team; teamIndex: number }) {
+const did = (c: number) => (c ? "defected" : "cooperated");
+
+/** 2B on the phone: your match, the payoff table, and two big buttons. */
+function MatchPlay({ pid, match, teams, myTeam, myIndex }: { pid: string; match?: Match; teams: Team[]; myTeam: Team; myIndex: number }) {
+  const [picked, setPicked] = useState<{ round: number; choice: number } | null>(null);
+  const [err, setErr] = useState("");
+  const [sending, setSending] = useState(false);
+  if (!match)
+    return (
+      <main style={centered}>
+        <h1 style={{ ...h1(36), lineHeight: 1 }}>Your team isn&apos;t in a match this time</h1>
+        <p style={{ margin: 0, fontSize: 17, lineHeight: 1.4, color: C.ink2 }}>Teams were paired when the matches started. Watch the live scores on the screen!</p>
+      </main>
+    );
+  const side = matchSide(match, myTeam.id);
+  const oi = teams.findIndex((t) => t.id === side.opp);
+  const opp = teams[oi];
+  const oppName = opp?.name ?? "the other team";
+  const over = match.round > PD_ROUNDS;
+  const mineNow = picked?.round === match.round ? picked.choice : null;
+  const last = side.mine.length - 1;
+  const play = async (c: number) => {
+    setPicked({ round: match.round, choice: c });
+    setSending(true); // one move in flight at a time, so taps can't arrive out of order
+    const r = await playMove(pid, match.round, c).catch(() => ({ error: "Couldn't send. Check your connection and tap again." }));
+    setSending(false);
+    setErr(r.error ?? "");
+    if (r.error) setPicked(null);
+  };
+  return (
+    <main style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, padding: "18px 20px 24px" }}>
+      <section className="card" style={{ padding: "14px 16px 16px", display: "flex", flexDirection: "column", gap: 12, boxShadow: `4px 4px 0 ${C.ink}` }}>
+        <span className="label" style={{ fontSize: 12, color: over ? C.ink : C.muted }}>
+          {over ? "Match over" : `Round ${match.round} of ${PD_ROUNDS}`}
+        </span>
+        {[
+          { id: myTeam.id, t: myTeam, i: myIndex, moves: side.mine, ready: side.ready, score: side.score, you: true },
+          { id: side.opp, t: opp, i: oi, moves: side.theirs, ready: side.oppReady, score: side.oppScore, you: false },
+        ].map((x) => (
+          <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <Token team={x.t} index={x.i} size={34} radius={10} />
+            <span style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.you ? "You" : (x.t?.name ?? "Removed team")}</span>
+            <MoveCells moves={x.moves} round={match.round} ready={x.ready} size={28} />
+            <span key={x.score} className="mono gte-press" style={{ width: 36, textAlign: "right", fontSize: 26, fontWeight: 800, letterSpacing: "-0.04em" }}>
+              {x.score}
+            </span>
+          </div>
+        ))}
+        {last >= 0 && (
+          <p key={last} className="gte-in" role="status" style={{ margin: 0, paddingTop: 10, borderTop: `2px solid ${C.line}`, fontSize: 15, lineHeight: 1.4, color: C.ink2 }}>
+            <strong>Round {last + 1}:</strong> you {did(side.mine[last])}, {oppName} {did(side.theirs[last])}.{" "}
+            <span className="mono" style={{ fontWeight: 800, color: C.ink }}>
+              +{PAYOFF[side.mine[last]][side.theirs[last]]} / +{PAYOFF[side.theirs[last]][side.mine[last]]}
+            </span>
+          </p>
+        )}
+      </section>
+
+      {over ? (
+        <section className="gte-pop" style={{ padding: "18px 16px", display: "flex", flexDirection: "column", gap: 6, background: C.ink, color: C.paper, borderRadius: 18, boxShadow: `4px 4px 0 ${C.verm}`, textAlign: "center" }}>
+          <span className="serif" style={{ fontSize: 34, lineHeight: 1.05, color: C.mari }}>
+            {side.score > side.oppScore ? "You won the match!" : side.score < side.oppScore ? `${oppName} won the match` : "It's a tie!"}
+          </span>
+          <span style={{ fontSize: 16, lineHeight: 1.4, color: "#DCD5C8" }}>
+            Your <strong style={{ color: C.paper }}>{side.score} points</strong> go on the leaderboard. Watch the screen while the other matches finish.
+          </span>
+        </section>
+      ) : (
+        <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <h2 className="label" style={{ margin: 0, fontSize: 12 }}>
+            Round {match.round}: your team&apos;s choice
+          </h2>
+          <div role="radiogroup" aria-label="Cooperate or defect" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {MOVE.map((mv, c) => {
+              const on = mineNow === c;
+              return (
+                <Btn
+                  key={mv.label}
+                  role="radio"
+                  aria-checked={on}
+                  disabled={sending}
+                  onClick={() => play(c)}
+                  className={`btn ${on ? "gte-press" : ""}`}
+                  style={{ height: 96, flexDirection: "column", gap: 4, background: mv.color, fontSize: 22, boxShadow: on ? `0 0 0 3px ${C.paper}, 0 0 0 6px ${C.ink}` : undefined }}
+                >
+                  {mv.label}
+                  <span className="mono" style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.08em" }}>
+                    {on ? "YOUR PICK" : c ? "TAKE MORE" : "SHARE"}
+                  </span>
+                </Btn>
+              );
+            })}
+          </div>
+          {err ? (
+            <p role="alert" style={{ margin: 0, color: C.vermDark, fontWeight: 700 }}>
+              {err}
+            </p>
+          ) : (
+            <p role="status" style={{ margin: 0, fontSize: 15, lineHeight: 1.4, color: C.ink2 }}>
+              {mineNow !== null
+                ? `Locked in: ${MOVE[mineNow].label}. ${side.oppReady ? "" : `Waiting for ${oppName}… You can still change it.`}`
+                : side.ready
+                  ? "A teammate already chose this round. Tap to change it."
+                  : `Talk it over, then tap. Any teammate can choose; the latest tap counts.${side.oppReady ? ` ${oppName} has already chosen.` : ""}`}
+            </p>
+          )}
+        </section>
+      )}
+
+      <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <h2 className="label" style={{ margin: 0, fontSize: 12 }}>
+          How points work (each round)
+        </h2>
+        <PayoffMatrix phone />
+      </section>
+    </main>
+  );
+}
+
+function PhoneReveal({ q, results, team, teamIndex, teams, showMath }: { q: Question; results: Results | null; team: Team; teamIndex: number; teams: Team[]; showMath: boolean }) {
   const r = results?.reveal;
   if (!r) return null;
   const row = r.rows.find((x) => x.teamId === team.id);
+  const match = r.matches?.find((m) => m.a === team.id || m.b === team.id);
   const answered = !row ? "—" : q.kind === "number" ? (row.number ?? "—") : row.choice !== null ? LETTERS[row.choice] : "—";
   return (
     <main style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, padding: "20px 20px 24px" }}>
@@ -844,7 +978,40 @@ function PhoneReveal({ q, results, team, teamIndex }: { q: Question; results: Re
         {r.answer}
       </p>
       <p style={{ margin: 0, fontSize: 16, lineHeight: 1.5, color: C.ink2 }}>{r.insight}</p>
-      {row && (
+      {showMath && <MathCard steps={r.math} phone />}
+      {q.kind === "pd" ? (
+        <section aria-label="Your match" className="card gte-pop" style={{ marginTop: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: 12, animationDelay: ".15s" }}>
+          {match ? (
+            <>
+              <span className="label" style={{ fontSize: 12 }}>
+                Your match
+              </span>
+              {[team.id, matchSide(match, team.id).opp].map((id) => {
+                const side = matchSide(match, id);
+                const k = teams.findIndex((t) => t.id === id);
+                return (
+                  <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <Token team={teams[k]} index={k} size={32} radius={9} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{id === team.id ? "You" : (teams[k]?.name ?? "Removed team")}</span>
+                    <MoveCells moves={side.mine} round={match.round} ready={false} size={26} live={false} />
+                    <span className="mono" style={{ width: 36, textAlign: "right", fontSize: 24, fontWeight: 800 }}>
+                      {side.score}
+                    </span>
+                  </div>
+                );
+              })}
+              <span style={{ fontSize: 15, color: C.ink2 }}>
+                Added to the leaderboard:{" "}
+                <mark className="hl mono" style={{ padding: "0 4px", fontWeight: 800 }}>
+                  +{matchSide(match, team.id).score}
+                </mark>
+              </span>
+            </>
+          ) : (
+            <span style={{ fontSize: 16, color: C.ink2 }}>Your team wasn&apos;t in a match, so no points this time.</span>
+          )}
+        </section>
+      ) : row && (
         <section aria-label="Your team's result" className="card gte-pop" style={{ marginTop: "auto", position: "relative", padding: "18px 16px 16px", display: "flex", flexDirection: "column", gap: 16, animationDelay: ".15s" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Token team={team} index={teamIndex} size={36} radius={10} />

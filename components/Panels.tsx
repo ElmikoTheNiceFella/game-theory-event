@@ -2,7 +2,7 @@
 
 import type { Results, Standing } from "@/app/actions";
 import type { Question } from "@/lib/questions";
-import type { Team } from "@/lib/types";
+import { PD_ROUNDS, type Match, type Team } from "@/lib/types";
 import { C, LETTERS, fmt1, tokenFor } from "@/lib/theme";
 import { Confetti, I, Token, Trophy, confettiPieces } from "./ui";
 
@@ -59,6 +59,115 @@ export function PayoffMatrix({ phone = false }: { phone?: boolean }) {
         </span>
       </figcaption>
     </figure>
+  );
+}
+
+/* ---------------- 2B head-to-head matches ---------------- */
+
+/** PAYOFF[mine][theirs], 0 = cooperate, 1 = defect (mirrors pd_move in schema.sql). */
+export const PAYOFF = [
+  [3, 0],
+  [5, 1],
+];
+
+export const MOVE = [
+  { label: "Cooperate", short: "C", color: "#34C77B" },
+  { label: "Defect", short: "D", color: C.verm },
+] as const;
+
+/** One team's side of a match, from that team's point of view. */
+export function matchSide(m: Match, teamId: string) {
+  const isA = m.a === teamId;
+  return {
+    opp: isA ? m.b : m.a,
+    mine: isA ? m.a_moves : m.b_moves,
+    theirs: isA ? m.b_moves : m.a_moves,
+    score: isA ? m.a_score : m.b_score,
+    oppScore: isA ? m.b_score : m.a_score,
+    ready: isA ? m.a_ready : m.b_ready,
+    oppReady: isA ? m.b_ready : m.a_ready,
+  };
+}
+
+/** Round cells: played = C/D, current = ready check or waiting dots, future = dashed. */
+export function MoveCells({ moves, round, ready, size = 34, live = true }: { moves: number[]; round: number; ready: boolean; size?: number; live?: boolean }) {
+  return (
+    <span style={{ display: "flex", gap: Math.round(size * 0.18) }}>
+      {Array.from({ length: PD_ROUNDS }, (_, k) => {
+        const mv = moves[k];
+        const current = live && k === round - 1;
+        return (
+          <span
+            key={k}
+            className={`mono ${mv !== undefined ? "gte-pop" : ""}`}
+            aria-label={mv !== undefined ? `Round ${k + 1}: ${MOVE[mv].label}` : current ? (ready ? "chosen" : "choosing") : undefined}
+            style={{ width: size, height: size, flex: "none", boxSizing: "border-box", display: "grid", placeItems: "center", borderRadius: Math.round(size * 0.26), border: mv !== undefined || (current && ready) ? `2px solid ${C.ink}` : `2px dashed ${current ? C.ink : C.faint}`, background: mv !== undefined ? MOVE[mv].color : current && ready ? C.paper : "transparent", fontSize: Math.round(size * 0.5), fontWeight: 800, color: C.ink }}
+          >
+            {mv !== undefined ? MOVE[mv].short : current ? ready ? <I.check size={Math.round(size * 0.5)} /> : <span className="gte-d1">•</span> : null}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+/** Projector match card (live dashboard and reveal). */
+export function MatchCard({ m, teams, compact = false }: { m: Match; teams: Team[]; compact?: boolean }) {
+  const over = m.round > PD_ROUNDS;
+  const lead = m.a_score === m.b_score ? null : m.a_score > m.b_score ? m.a : m.b;
+  const cell = compact ? 28 : 34;
+  return (
+    <article className="gte-pop" style={{ boxSizing: "border-box", padding: compact ? "10px 14px" : "14px 18px", display: "flex", flexDirection: "column", gap: compact ? 6 : 10, background: C.paper2, border: `2.5px solid ${C.ink}`, borderRadius: 18, boxShadow: `4px 4px 0 ${C.ink}` }}>
+      <span className="label" style={{ display: "flex", justifyContent: "space-between", fontSize: compact ? 12 : 14, letterSpacing: "0.1em", color: over ? C.ink : C.muted }}>
+        <span>{over ? "Final" : `Round ${m.round} of ${PD_ROUNDS}`}</span>
+        {over && <span>{lead ? "" : "Tie"}</span>}
+      </span>
+      {[m.a, m.b].map((id) => {
+        const t = teams.find((x) => x.id === id);
+        const side = matchSide(m, id);
+        const wins = over && lead === id;
+        return (
+          <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <Token team={t} index={teams.findIndex((x) => x.id === id)} size={compact ? 30 : 38} radius={10} />
+            <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: compact ? 18 : 21, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t?.name ?? "Removed team"}</span>
+              {wins && (
+                <span className="label gte-stamp" style={{ flex: "none", padding: "2px 8px", borderRadius: 999, background: C.ink, color: C.mari, fontSize: 11, letterSpacing: "0.1em" }}>
+                  Wins
+                </span>
+              )}
+            </span>
+            <MoveCells moves={side.mine} round={m.round} ready={side.ready} size={cell} />
+            <span key={side.score} className="mono gte-press" style={{ width: compact ? 44 : 56, textAlign: "right", fontSize: compact ? 26 : 34, fontWeight: 800, letterSpacing: "-0.04em" }}>
+              {side.score}
+            </span>
+          </div>
+        );
+      })}
+    </article>
+  );
+}
+
+/** Revealable step-by-step math (host click). */
+export function MathCard({ steps, phone = false }: { steps: string[]; phone?: boolean }) {
+  return (
+    <section className="gte-twist" style={{ display: "flex", flexDirection: "column", gap: phone ? 8 : 12, padding: phone ? "16px 16px" : "22px 26px", background: C.ink, color: C.paper, borderRadius: phone ? 18 : 22, boxShadow: `${phone ? 4 : 6}px ${phone ? 4 : 6}px 0 ${C.verm}` }}>
+      <span className="serif" style={{ fontSize: phone ? 30 : 40, lineHeight: 1, color: C.mari }}>
+        The math
+      </span>
+      <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: phone ? 6 : 10 }}>
+        {steps.map((st, i) => (
+          <li key={st} className="gte-rowin" style={{ display: "flex", gap: phone ? 10 : 14, alignItems: "baseline", animationDelay: `${0.12 * i}s` }}>
+            <span className="mono" style={{ flex: "none", width: phone ? 22 : 30, color: "#BFB8AA", fontSize: phone ? 14 : 18, fontWeight: 800 }}>
+              {i + 1}.
+            </span>
+            <span className="mono" style={{ fontSize: phone ? 15 : 23, lineHeight: 1.35, fontWeight: 700 }}>
+              {st}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 
@@ -364,7 +473,7 @@ function NumberLine({ r, teams }: { r: NonNullable<Results["reveal"]>; teams: Te
   );
 }
 
-export function HostReveal({ q, results, teams }: { q: Question; results: Results; teams: Team[] }) {
+export function HostReveal({ q, results, teams, showMath }: { q: Question; results: Results; teams: Team[]; showMath: boolean }) {
   const r = results.reveal;
   if (!r) return null;
   const rows = [...r.rows].sort((a, b) => b.points - a.points);
@@ -389,115 +498,121 @@ export function HostReveal({ q, results, teams }: { q: Question; results: Result
         <p className="serif gte-drop" style={{ margin: "16px 0 0", fontSize: 58, lineHeight: 1.02, letterSpacing: "-0.01em", textWrap: "balance" }}>
           {r.answer}
         </p>
-        <p style={{ margin: "18px 0 0", fontSize: r.insight.length > 330 ? 21 : 24, lineHeight: 1.38, fontWeight: 500, color: C.ink2, textWrap: "pretty" }}>{r.insight}</p>
-        {r.twoThirds && r.twoThirds.target !== null && <NumberLine r={r} teams={teams} />}
-        {results.table && (
+        {showMath ? (
           <div style={{ marginTop: 22 }}>
-            <SurgeonTable table={results.table} />
+            <MathCard steps={r.math} />
           </div>
-        )}
-        {r.pairs && r.pairs.length > 0 && (
-          <div className="card gte-pop" style={{ marginTop: 22, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-            <span className="label" style={{ fontSize: 14, color: C.muted }}>
-              Just for fun: if teams were paired up
-            </span>
-            {r.pairs.map((p) => (
-              <div key={p.a} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 21, fontWeight: 700 }}>
-                <Token team={team(p.a)} index={tIndex(p.a)} size={30} radius={8} />
-                <span>{p.aChoice ? "Defect" : "Cooperate"}</span>
-                <span className="mono" style={{ fontWeight: 800 }}>
-                  {p.aPts} : {p.bPts}
-                </span>
-                <span>{p.bChoice ? "Defect" : "Cooperate"}</span>
-                <Token team={team(p.b)} index={tIndex(p.b)} size={30} radius={8} />
+        ) : (
+          <>
+            <p style={{ margin: "18px 0 0", fontSize: r.insight.length > 330 ? 21 : 24, lineHeight: 1.38, fontWeight: 500, color: C.ink2, textWrap: "pretty" }}>{r.insight}</p>
+            {r.twoThirds && r.twoThirds.target !== null && <NumberLine r={r} teams={teams} />}
+            {results.table && (
+              <div style={{ marginTop: 22 }}>
+                <SurgeonTable table={results.table} />
               </div>
-            ))}
-          </div>
-        )}
-        {q.kind === "mcq" && !results.table && !r.pairs?.length && (
-          <ol style={{ margin: "22px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
-            {q.choices.map((c, i) => {
-              const ok = r.correct.includes(i);
-              return (
-                <li key={c} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 14px 8px 8px", borderRadius: 14, border: ok ? `2.5px solid ${C.ink}` : `2px dashed ${C.faint}`, background: ok ? C.cobalt : "transparent", color: ok ? C.paper : C.muted, fontSize: 20, fontWeight: 700 }}>
-                  <span className="mono" style={{ width: 34, height: 34, display: "grid", placeItems: "center", borderRadius: 9, background: ok ? C.paper : C.line, color: C.ink, fontSize: 17, fontWeight: 800 }}>
-                    {LETTERS[i]}
-                  </span>
-                  {c}
-                </li>
-              );
-            })}
-          </ol>
+            )}
+            {q.kind === "pd" && (
+              <div style={{ marginTop: 22, width: 560 }}>
+                <PayoffMatrix />
+              </div>
+            )}
+            {q.kind === "mcq" && !results.table && (
+              <ol style={{ margin: "22px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+                {q.choices.map((c, i) => {
+                  const ok = r.correct.includes(i);
+                  return (
+                    <li key={c} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 14px 8px 8px", borderRadius: 14, border: ok ? `2.5px solid ${C.ink}` : `2px dashed ${C.faint}`, background: ok ? C.cobalt : "transparent", color: ok ? C.paper : C.muted, fontSize: 20, fontWeight: 700 }}>
+                      <span className="mono" style={{ width: 34, height: 34, display: "grid", placeItems: "center", borderRadius: 9, background: ok ? C.paper : C.line, color: C.ink, fontSize: 17, fontWeight: 800 }}>
+                        {LETTERS[i]}
+                      </span>
+                      {c}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </>
         )}
       </div>
 
-      <section style={{ position: "absolute", left: 904, right: 56, top: 108, display: "flex", flexDirection: "column", gap: 14 }}>
-        <h2 className="label" style={{ margin: 0, fontSize: 18 }}>
-          Points this question
-        </h2>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, background: C.paper2, border: `2.5px solid ${C.ink}`, borderRadius: 18, overflow: "hidden", boxShadow: `5px 5px 0 ${C.ink}` }}>
-          <thead>
-            <tr className="mono" style={{ background: C.ink, color: C.paper, fontSize: 13, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>
-              <th scope="col" style={{ padding: "13px 16px", textAlign: "left" }}>
-                Team
-              </th>
-              <th scope="col" style={{ padding: "13px 8px", textAlign: "right" }}>
-                Pick
-              </th>
-              <th scope="col" style={{ padding: "13px 8px", textAlign: "center" }}>
-                Correct
-              </th>
-              <th scope="col" style={{ padding: "13px 8px", textAlign: "right" }}>
-                Avg vote
-              </th>
-              <th scope="col" style={{ padding: "13px 16px", textAlign: "right" }}>
-                Points
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => {
-              const t = team(row.teamId);
-              const picked = q.kind === "number" ? row.number : row.choice;
-              const pick = picked === null ? "—" : q.kind === "number" ? String(row.number) : LETTERS[row.choice!];
-              const reason = q.id === "2a" && row.correct ? (row.number === 0 ? "picked 0" : "closest") : undefined;
-              const td = { borderTop: `2px solid ${C.line}` };
-              return (
-                <tr key={row.teamId} className="gte-rowin" style={{ background: i === 0 ? "#FFF6D6" : "transparent", animationDelay: `${0.06 * i}s` }}>
-                  <th scope="row" style={{ ...td, height: compact ? 54 : 70, padding: "0 8px 0 12px", textAlign: "left", fontWeight: 800 }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                      <Token team={t} index={tIndex(row.teamId)} size={36} radius={10} />
-                      <span style={{ maxWidth: 200, fontSize: 19, lineHeight: 1.1, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{t?.name}</span>
-                    </span>
-                  </th>
-                  <td className="mono" style={{ ...td, padding: "0 8px", textAlign: "right", fontSize: 24, fontWeight: 800, color: picked === null ? C.muted : C.ink }}>
-                    {pick}
-                  </td>
-                  <td style={{ ...td, padding: "0 8px", textAlign: "center" }}>
-                    {row.correct ? (
-                      <CorrectStamp reason={reason} />
-                    ) : picked === null ? (
-                      <span className="mono" style={{ fontSize: 22, fontWeight: 800, color: C.muted }}>
-                        —
+      {r.matches ? (
+        <section style={{ position: "absolute", left: 904, right: 56, top: 108, display: "flex", flexDirection: "column", gap: 12 }}>
+          <h2 className="label" style={{ margin: 0, fontSize: 18 }}>
+            Match results · totals go on the leaderboard
+          </h2>
+          {r.matches.map((m) => (
+            <MatchCard key={m.id} m={m} teams={teams} compact={r.matches!.length > 3} />
+          ))}
+        </section>
+      ) : (
+        <section style={{ position: "absolute", left: 904, right: 56, top: 108, display: "flex", flexDirection: "column", gap: 14 }}>
+          <h2 className="label" style={{ margin: 0, fontSize: 18 }}>
+            Points this question
+          </h2>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, background: C.paper2, border: `2.5px solid ${C.ink}`, borderRadius: 18, overflow: "hidden", boxShadow: `5px 5px 0 ${C.ink}` }}>
+            <thead>
+              <tr className="mono" style={{ background: C.ink, color: C.paper, fontSize: 13, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                <th scope="col" style={{ padding: "13px 16px", textAlign: "left" }}>
+                  Team
+                </th>
+                <th scope="col" style={{ padding: "13px 8px", textAlign: "right" }}>
+                  Pick
+                </th>
+                <th scope="col" style={{ padding: "13px 8px", textAlign: "center" }}>
+                  Correct
+                </th>
+                <th scope="col" style={{ padding: "13px 8px", textAlign: "right" }}>
+                  Avg vote
+                </th>
+                <th scope="col" style={{ padding: "13px 16px", textAlign: "right" }}>
+                  Points
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => {
+                const t = team(row.teamId);
+                const picked = q.kind === "number" ? row.number : row.choice;
+                const pick = picked === null ? "—" : q.kind === "number" ? String(row.number) : LETTERS[row.choice!];
+                const reason = q.id === "2a" && row.correct ? (row.number === 0 ? "picked 0" : "closest") : undefined;
+                const td = { borderTop: `2px solid ${C.line}` };
+                return (
+                  <tr key={row.teamId} className="gte-rowin" style={{ background: i === 0 ? "#FFF6D6" : "transparent", animationDelay: `${0.06 * i}s` }}>
+                    <th scope="row" style={{ ...td, height: compact ? 54 : 70, padding: "0 8px 0 12px", textAlign: "left", fontWeight: 800 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <Token team={t} index={tIndex(row.teamId)} size={36} radius={10} />
+                        <span style={{ maxWidth: 200, fontSize: 19, lineHeight: 1.1, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{t?.name}</span>
                       </span>
-                    ) : (
-                      <span role="img" aria-label="not correct" style={{ display: "inline-grid", placeItems: "center", width: 30, height: 30, borderRadius: 999, border: `2px dashed ${C.faint}`, color: C.muted }}>
-                        <I.x size={13} />
-                      </span>
-                    )}
-                  </td>
-                  <td className="mono" style={{ ...td, padding: "0 8px", textAlign: "right", fontSize: 22, fontWeight: 700, color: C.ink2 }}>
-                    {row.votes ? fmt1(row.voteAvg) : "—"}
-                  </td>
-                  <td className="mono" style={{ ...td, padding: "0 16px", textAlign: "right", fontSize: 30, fontWeight: 800, letterSpacing: "-0.03em" }}>
-                    {fmt1(row.points)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </section>
+                    </th>
+                    <td className="mono" style={{ ...td, padding: "0 8px", textAlign: "right", fontSize: 24, fontWeight: 800, color: picked === null ? C.muted : C.ink }}>
+                      {pick}
+                    </td>
+                    <td style={{ ...td, padding: "0 8px", textAlign: "center" }}>
+                      {row.correct ? (
+                        <CorrectStamp reason={reason} />
+                      ) : picked === null ? (
+                        <span className="mono" style={{ fontSize: 22, fontWeight: 800, color: C.muted }}>
+                          —
+                        </span>
+                      ) : (
+                        <span role="img" aria-label="not correct" style={{ display: "inline-grid", placeItems: "center", width: 30, height: 30, borderRadius: 999, border: `2px dashed ${C.faint}`, color: C.muted }}>
+                          <I.x size={13} />
+                        </span>
+                      )}
+                    </td>
+                    <td className="mono" style={{ ...td, padding: "0 8px", textAlign: "right", fontSize: 22, fontWeight: 700, color: C.ink2 }}>
+                      {row.votes ? fmt1(row.voteAvg) : "—"}
+                    </td>
+                    <td className="mono" style={{ ...td, padding: "0 16px", textAlign: "right", fontSize: 30, fontWeight: 800, letterSpacing: "-0.03em" }}>
+                      {fmt1(row.points)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      )}
     </>
   );
 }
