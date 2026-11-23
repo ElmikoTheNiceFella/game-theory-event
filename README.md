@@ -35,15 +35,15 @@ Import [`Blooket_Round1_Probability.xlsx`](./Blooket_Round1_Probability.xlsx) in
 ## Round 2: Case challenges (this app)
 
 ### Roles
-- **Organizer** opens `/host` on the projector laptop and enters the organizer PIN. They add and remove teams, choose which question to play, step through the story, and control every stage and timer.
-- **Participants** open the site on their phones (scan the QR code shown in the lobby), enter their name and tap a team to join. They can switch or leave teams at any time, except while a presentation or vote is in progress.
+- **Organizer** opens `/host` on the projector laptop and enters the organizer PIN. They add and remove teams, see every player in the lobby (and can kick one, after a confirmation), choose which question to play, step through the story, and control every stage and timer.
+- **Participants** open the site on their phones (scan the QR code shown in the lobby), enter their name and tap a team to join. They can switch or leave teams at any time, except while a presentation, vote or Cooperate-or-Defect match is in progress.
 
 ### How a question plays out
-1. **Story scene**: the projector plays the problem as a visual-novel dialogue with illustrated scenes and faceless characters. The organizer advances each line with **Space / → / click** (← goes back). Phones show *"Watch the screen"*.
+1. **Story scene** (at most 4 cards): the projector plays the problem as a visual-novel dialogue with illustrated scenes and faceless characters. The organizer advances each line with **Space / → / click** (← goes back). Phones show *"Watch the screen"*.
 2. **Answering (5 min)**: the projector shows a summary of the problem and a live **"X / N teams submitted"** counter. On their phones, each team submits **one answer** (multiple choice, or a number for the Two-Thirds Game) plus **a written explanation**. Any team member can submit, and the latest submission counts. The window closes early once every team has submitted. The organizer can pause it, add a minute or end it early.
-3. **Presentations**: the app picks teams **at random** until every team has presented. The chosen team stands up and has **60 seconds** to explain its reasoning, with a countdown on the projector and on that team's phones.
+3. **Presentations**: the app picks teams **at random** until every team has presented. The chosen team stands up and has **60 seconds** to explain its reasoning, with a countdown on the projector and on that team's phones. The projector also shows the team's submitted answer and written explanation, plus what every team picked (without saying what's correct).
 4. **Voting (30 s)**: after each presentation, **every other team casts one vote from 0 to 10**. Any member can cast it, and the latest vote counts. Voting ends early once all teams have voted. Only averages are ever shown, never who voted what.
-5. **Reveal**: the projector shows the correct answer, the key insight, and each team's answer, average vote and points for the question.
+5. **Reveal**: the projector shows the correct answer, the key insight, and each team's answer, average vote and points for the question. **Show the math** swaps the insight for a step-by-step breakdown (also on phones).
 6. **Leaderboard**: running team totals. The organizer then picks the next question.
 
 The organizer can **skip** the remaining presentations at any time and jump straight to the reveal.
@@ -56,6 +56,7 @@ points for a question = (2 if the answer is correct, else 0) + average of the vo
 - A team never votes on itself, and its own vote never affects its own score.
 - A team that didn't submit can still earn its vote average by presenting.
 - If no team votes on a presentation, its vote part is 0.
+- **Cooperate or Defect special rule:** no answers, presentations or votes. Teams are paired head-to-head (it needs an **even** number of teams with players) and play 4 rounds at the same time; each team's **raw match total** is added to the leaderboard (both always cooperating = 12 each).
 - **Two-Thirds Game special rule:** **+2** goes to every team that picked **0** (the Nash equilibrium) **and** to the team(s) closest to the actual ⅔-of-average target.
 - Totals add up across all questions.
 
@@ -68,7 +69,7 @@ The organizer can play them in any order. **The Voting Game is meant to be playe
 | 1B | **The DNA Evidence**: a 1-in-a-million match in a city of 8 million. Guilty? | Base rates, prosecutor's fallacy |
 | 1C | **Choosing the Better Surgeon**: 95% vs 90% overall. Teams lock in a pick, *then* see the mild/severe breakdown and must explain the reversal. | Simpson's paradox |
 | 2A | **The Two-Thirds Game**: pick 0–100; closest to ⅔ of the average wins. The reveal shows everyone's numbers, the average and the target. | Iterated reasoning, Nash equilibrium |
-| 2B | **Cooperate or Defect**: a payoff matrix for one round. The reveal also shows a just-for-fun pairing of teams. | Prisoner's dilemma, dominant strategies |
+| 2B | **Cooperate or Defect**: teams play live 4-round matches against each other on their phones, with every match's score live on the projector. | Prisoner's dilemma, repeated games |
 | 3A | **Justice vs. Wrongful Conviction**: if convicting an innocent person is 10× worse than freeing a guilty one, how sure must a jury be? | Decision thresholds, false positives vs. negatives |
 | ★ | **The Missing Bullet Holes**: where should the armor go on returning WWII planes? | Survivorship bias |
 | ∞ | **The Voting Game**: given this event's own scoring rules, how should a team vote to maximize its rank? | Game theory of the event itself |
@@ -95,7 +96,7 @@ lobby → rules → [question select → story → answering (5:00)
 **Stack:** Next.js 16 (App Router) on Vercel, Supabase (Postgres + Realtime). All game state lives in Supabase, so phones only need ordinary internet access, which works on restrictive networks like eduroam.
 
 ### 1. Supabase
-Create a project, then run [`supabase/schema.sql`](./supabase/schema.sql) in the SQL editor. It creates the tables, row-level security (phones can only *read* game, teams and participants; answers and votes stay private) and the realtime publication.
+Create a project, then run [`supabase/schema.sql`](./supabase/schema.sql) in the SQL editor (it is safe to re-run). It creates the tables, row-level security (phones can only *read* game, teams, participants and resolved match rounds; answers, votes and unrevealed match moves stay private), the `pd_move` function and the realtime publication.
 
 ### 2. Environment (`.env.local`, and the same values in Vercel)
 ```
@@ -109,7 +110,7 @@ ORGANIZER_PIN=<pick one>
 ```bash
 npm install
 npm run dev        # http://localhost:3000 (participants), /host (organizer)
-npm test           # scoring unit tests
+npm test           # scoring + question-content unit tests
 npm run build
 # full backend flow over HTTP (DESTRUCTIVE: wipes teams/answers; never on event day)
 npx next start -p 3123 & E2E_CONFIRM=1 npm run e2e

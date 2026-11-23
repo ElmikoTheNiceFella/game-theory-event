@@ -54,13 +54,13 @@ From `lib/types.ts`, `lib/questions.ts` and `app/actions.ts`:
 
 **Participant**: `name`, `team_id`
 
-**Question** (`lib/questions.ts`): `code` (1A, 1B, 1C, 2A, 2B, 3A, ★, ∞), `title`, `topic`, `scene`, `cast` (characters), `dialogue[]` (lines with speaker and pose), `summary[]` (bullets), `prompt`, `kind` (`mcq` | `number`), `choices[]`, flags `lockChoice` (1C), `extra: "matrix"` (2B), `last` (Voting Game)
+**Question** (`lib/questions.ts`): `code` (1A, 1B, 1C, 2A, 2B, 3A, ★, ∞), `title`, `topic`, `scene`, `cast` (characters), `dialogue[]` (lines with speaker and pose), `summary[]` (bullets), `prompt`, `kind` (`mcq` | `number` | `pd`), `choices[]`, flags `lockChoice` (1C), `last` (Voting Game)
 
 **Results** (fetched at reveal, leaderboard, finale and final):
 - `standings[]`: `{ name, color, total }`, sorted
 - `reveal`: `answer` (headline), `insight` (paragraph), `correct[]`, and per team `{ choice | number, correct, voteAvg, votes, points }`
   - 2A extra: `average`, `target`, `closest[]`
-  - 2B extra: fun pairings `{ teamA, teamB, choices, points }`
+  - 2B: head-to-head `matches` (round, revealed moves, scores); each team scores its raw match total
 - `table`: the 1C surgeon breakdown (shown only after a team locks its pick, or when the organizer toggles it on)
 
 **Privacy rule (constraint):** individual votes and other teams' answers are never shown before the reveal, and after it only **averages** appear, never who voted what.
@@ -96,7 +96,7 @@ The layout is a full-height screen area with a **control bar** at the bottom. Pr
 - See §6 for the characters and §7 for the scenes.
 
 ### 4.5 Answering
-- **Left:** question code and topic (small caps), title, summary bullets, the 2B **payoff matrix** when relevant, the **prompt** (highlighted), and the MCQ choices in a 2×2 grid as A/B/C/D tiles (not shown for 2A, which takes a number). For 1C, the surgeon table appears when the organizer toggles it.
+- **Left:** question code and topic (small caps), title, summary bullets, the **prompt** (highlighted), and the MCQ choices in a 2×2 grid as A/B/C/D tiles (not shown for 2A, which takes a number). For 1C, the surgeon table appears when the organizer toggles it.
 - **Right:** a big **ring timer** (5:00), an **"X / N teams submitted"** count, and **team chips** that light up as each team submits.
 
 ### 4.6 Presenting
@@ -107,7 +107,7 @@ The layout is a full-height screen area with a **control bar** at the bottom. Pr
 
 ### 4.8 Reveal
 - The **correct answer** as a big green headline, then the **insight** paragraph.
-- Optional blocks: 1C surgeon table; 2A "Average → target → closest team(s)"; 2B "just for fun" pairings.
+- Optional blocks: 1C surgeon table; 2A "Average → target → closest team(s)"; 2B final match cards. "Show the math" swaps the insight for step-by-step math.
 - A **results table**: team chip | their answer | ✅ +2 / ❌ | avg vote | points.
 
 ### 4.9 Leaderboard / Final standings
@@ -204,7 +204,7 @@ The scenes are 1600×900 SVG backdrops scaled to cover the screen, with the floo
 | 1B | The DNA Evidence | MCQ (4) | Det. Karim, Lina (lab) |
 | 1C | Choosing the Better Surgeon | MCQ (3), **lock then table** | Sara, Nurse Hadi |
 | 2A | The Two-Thirds Game | **Number 0–100** | Yousef, Prof. Nadia, Leen |
-| 2B | Cooperate or Defect | MCQ (3) + payoff matrix | Dana, Rami (host), Zaid |
+| 2B | Cooperate or Defect | Live 4-round head-to-head matches (even team count) | Dana, Rami (host), Zaid |
 | 3A | Justice vs. Wrongful Conviction | MCQ (4) | Faris, Judge Amal, Huda |
 | ★ | The Missing Bullet Holes | MCQ (4) | Capt. Tariq, Eng. Rana |
 | ∞ | The Voting Game (last) | MCQ (4) | Reem, The Host, Ali |
