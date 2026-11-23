@@ -526,9 +526,9 @@ function TimerStrip({ ms, paused, total }: { ms: number | null; paused: boolean;
           "Timer paused"
         ) : last ? (
           <>
-            Submit
+            {total === MATCH_SECONDS ? "Time's" : "Submit"}
             <br />
-            soon
+            {total === MATCH_SECONDS ? "almost up" : "soon"}
           </>
         ) : hurry ? (
           <>

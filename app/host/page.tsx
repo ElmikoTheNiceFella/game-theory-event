@@ -852,7 +852,17 @@ function Presenting({ q, game, active, teams, remaining, paused }: { q: Question
   const [pres, setPres] = useState<Presentation | null>(null);
   const presenter = game.presenting_team_id;
   useEffect(() => {
-    getPresentation().then(setPres, () => setPres(null));
+    // retry a few times so one dropped request doesn't blank the screen for the whole presentation
+    let live = true;
+    const load = (tries: number) =>
+      getPresentation().then(
+        (p) => live && (p ? setPres(p) : tries > 0 && setTimeout(() => load(tries - 1), 1500)),
+        () => live && tries > 0 && setTimeout(() => load(tries - 1), 1500),
+      );
+    load(3);
+    return () => {
+      live = false;
+    };
   }, [presenter]);
   const ti = teams.findIndex((t) => t.id === presenter);
   const team = teams[ti];
