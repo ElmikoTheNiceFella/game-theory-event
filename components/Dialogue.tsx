@@ -102,7 +102,7 @@ function LineBox({ line, speaker, i, total, bottom, onNext, onPrev }: { line: Li
             {i + 1} / {total}
           </span>
           <kbd className="key" style={{ fontSize: 14, color: C.ink, padding: "3px 9px", borderWidth: "2px 2px 4px", borderColor: C.ink, background: "#fff" }}>
-            {last && done ? "Space · answer" : "Space"}
+            {last && done ? "Space · start" : "Space"}
           </kbd>
           <svg className={done ? "gte-caret" : undefined} width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M7 4l12 8-12 8z" fill={C.ink} />

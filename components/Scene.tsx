@@ -83,7 +83,7 @@ function Door({ x, n, open }: { x: number; n: number; open?: boolean }) {
   );
 }
 
-/** 1A: doors react to the story (Door 1 picked from line 4, Door 3 opens from line 6). */
+/** 1A: doors react to the story (Door 1 picked from card 2, Door 3 opens from card 3). */
 function GameShow({ step }: { step: number }) {
   return (
     <Room wall={C.cobalt}>
@@ -103,8 +103,8 @@ function GameShow({ step }: { step: number }) {
       </T>
       <Door x={420} n={1} />
       <Door x={700} n={2} />
-      <Door x={980} n={3} open={step >= 5} />
-      {step >= 3 && (
+      <Door x={980} n={3} open={step >= 2} />
+      {step >= 1 && (
         <g className="gte-drop">
           <rect x="396" y="276" width="248" height="454" rx="20" fill="none" stroke={C.verm} strokeWidth="8" strokeDasharray="22 12" />
           <rect x="450" y="384" width="140" height="46" rx="23" fill={C.verm} stroke={C.ink} strokeWidth="4" />
@@ -144,6 +144,66 @@ function Board({ x, y, w, h, fill = C.paper2 }: { x: number; y: number; w: numbe
       <rect x={x + 8} y={y + 8} width={w} height={h} rx="18" fill={C.ink} />
       <rect x={x} y={y} width={w} height={h} rx="18" fill={fill} {...K} />
     </>
+  );
+}
+
+// Survivors' hit map: holes on wings, body and tail; none on engines or cockpit (that's the point).
+const HOLES = [
+  [345, -44], [382, -36], [412, -50], [362, -26], [398, -24], [72, -58], [98, -36], [212, -48], [238, -28],
+  [-332, -40], [-366, -52], [-402, -34], [-424, -48], [-84, -50], [-112, -30], [-214, -34], [-244, -54],
+  [-14, 24], [14, 52], [-10, 92], [12, 128], [-16, 160],
+  [92, 194], [124, 202], [-84, 192], [-118, 204],
+];
+const ENGINES = [150, 290, -150, -290];
+
+/** 1-bullets: top-down bomber on a blueprint board, nose up. Local origin = plane center. */
+function Bomber() {
+  const wing = "M36 -96 L438 -64 Q452 -61 450 -48 L446 -28 Q444 -18 432 -18 L36 -14 Z";
+  const stab = "M28 172 L150 186 Q160 188 158 198 L154 214 Q152 220 144 220 L28 214 Z";
+  return (
+    <g>
+      <defs>
+        <pattern id="gte-blueprint" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M40 0H0V40" fill="none" stroke="#FFFFFF" strokeOpacity="0.14" strokeWidth="2" />
+        </pattern>
+      </defs>
+      <rect x="328" y="44" width="960" height="520" rx="22" fill={C.ink} />
+      <rect x="320" y="36" width="960" height="520" rx="22" fill="#1E3399" {...K} />
+      <rect x="320" y="36" width="960" height="520" rx="22" fill="url(#gte-blueprint)" />
+      <T x={480} y={82} size={22} fill={C.mari} font="mono" spacing={3}>
+        HIT MAP · RETURNED
+      </T>
+      <g transform="translate(800 312) scale(0.92)">
+        <path d={wing} fill={C.paper2} {...K} />
+        <path d={wing} transform="scale(-1 1)" fill={C.paper2} {...K} />
+        <path d={stab} fill={C.paper2} {...K} />
+        <path d={stab} transform="scale(-1 1)" fill={C.paper2} {...K} />
+        {ENGINES.map((x) => (
+          <g key={x}>
+            <rect x={x - 22} y="-128" width="44" height="150" rx="18" fill="#CFC6B6" {...K} />
+            <rect x={x - 54} y="-144" width="108" height="10" rx="5" fill={C.ink} />
+            <circle cx={x} cy="-136" r="11" fill={C.mari} stroke={C.ink} strokeWidth="4" />
+          </g>
+        ))}
+        <path d="M0 -252 C30 -252 42 -204 42 -142 L37 150 C35 202 18 232 0 238 C-18 232 -35 202 -37 150 L-42 -142 C-42 -204 -30 -252 0 -252 Z" fill={C.paper2} {...K} />
+        <path d="M0 -248 C20 -248 30 -228 33 -206 L-33 -206 C-30 -228 -20 -248 0 -248 Z" fill={C.cobaltLight} stroke={C.ink} strokeWidth="4" strokeLinejoin="round" />
+        <rect x="-24" y="-190" width="20" height="22" rx="5" fill={C.cobalt} stroke={C.ink} strokeWidth="3.5" />
+        <rect x="4" y="-190" width="20" height="22" rx="5" fill={C.cobalt} stroke={C.ink} strokeWidth="3.5" />
+        <rect x="-6" y="150" width="12" height="92" rx="6" fill={C.ink} />
+        {[-110, 60, 110].map((y) => (
+          <path key={y} d={`M-38 ${y} H38`} stroke={C.ink} strokeWidth="3" opacity="0.35" />
+        ))}
+        {[-372, 372].map((x) => (
+          <g key={x}>
+            <circle cx={x} cy="-40" r="16" fill={C.cobalt} stroke={C.ink} strokeWidth="3" />
+            <circle cx={x} cy="-40" r="6" fill={C.paper2} />
+          </g>
+        ))}
+        {HOLES.map(([x, y], i) => (
+          <circle key={i} cx={x} cy={y} r="8.5" fill={C.verm} stroke={C.ink} strokeWidth="3" />
+        ))}
+      </g>
+    </g>
   );
 }
 
@@ -267,8 +327,8 @@ const SCENES: Record<Exclude<SceneId, "gameshow">, ReactNode> = {
     <Room wall="#9CC9FF" dots={0.25}>
       <circle cx="1420" cy="130" r="70" fill={C.mari} {...K} />
       {[
-        [300, 140, 1],
-        [980, 70, 0.8],
+        [50, 70, 0.9],
+        [1330, 290, 0.8],
       ].map(([x, y, s]) => (
         <path
           key={x}
@@ -278,21 +338,7 @@ const SCENES: Record<Exclude<SceneId, "gameshow">, ReactNode> = {
           {...K}
         />
       ))}
-      <g transform="translate(800 400)">
-        <path d="M-60 -10 L-420 120 L-380 150 L40 30 Z" fill="#CFC6B6" {...K} />
-        <path d="M-60 -10 L-420 -140 L-380 -170 L40 -30 Z" fill="#CFC6B6" {...K} />
-        <path d="M250 -10 L380 -140 L420 -130 L330 0 Z" fill="#CFC6B6" {...K} />
-        <ellipse cx="0" cy="0" rx="340" ry="48" fill={C.paper2} {...K} />
-        <ellipse cx="-280" cy="-4" rx="40" ry="26" fill={C.cobalt} {...K} />
-        <circle cx="-60" cy="-82" r="22" fill="#5E5A69" {...K} />
-        <circle cx="-60" cy="82" r="22" fill="#5E5A69" {...K} />
-        {[
-          [-300, 100], [-250, 80], [-200, 60], [-330, -110], [-260, -90], [-190, -70], [-150, 40], [-140, -50],
-          [330, -100], [360, -120], [300, -60], [200, -10], [150, 12], [250, 8],
-        ].map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r="9" fill={C.verm} stroke={C.ink} strokeWidth="3" />
-        ))}
-      </g>
+      <Bomber />
     </Room>
   ),
   hall: (
