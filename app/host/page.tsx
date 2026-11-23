@@ -838,7 +838,7 @@ function Matches({ q, matches, teams, remaining, paused }: { q: Question; matche
         </div>
         <div style={{ display: "grid", gridTemplateColumns: matches.length > 1 ? "repeat(2, minmax(0, 1fr))" : "minmax(0, 1fr)", gap: 16, alignContent: "start" }}>
           {matches.map((m) => (
-            <MatchCard key={m.id} m={m} teams={teams} />
+            <MatchCard key={m.id} m={m} teams={teams} compact={matches.length > 4} />
           ))}
         </div>
       </section>

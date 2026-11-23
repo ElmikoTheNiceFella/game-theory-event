@@ -111,16 +111,17 @@ export function MoveCells({ moves, round, ready, size = 34, live = true }: { mov
   );
 }
 
-/** Projector match card (live dashboard and reveal). */
-export function MatchCard({ m, teams, compact = false }: { m: Match; teams: Team[]; compact?: boolean }) {
-  const over = m.round > PD_ROUNDS;
+/** Projector match card. `final` = the stage is over (reveal): no live markers, unfinished matches say where they stopped. */
+export function MatchCard({ m, teams, compact = false, final = false }: { m: Match; teams: Team[]; compact?: boolean; final?: boolean }) {
+  const over = final || m.round > PD_ROUNDS;
   const lead = m.a_score === m.b_score ? null : m.a_score > m.b_score ? m.a : m.b;
-  const cell = compact ? 28 : 34;
+  const cell = compact ? 24 : 34;
+  const played = Math.min(m.round - 1, PD_ROUNDS);
   return (
-    <article className="gte-pop" style={{ boxSizing: "border-box", padding: compact ? "10px 14px" : "14px 18px", display: "flex", flexDirection: "column", gap: compact ? 6 : 10, background: C.paper2, border: `2.5px solid ${C.ink}`, borderRadius: 18, boxShadow: `4px 4px 0 ${C.ink}` }}>
-      <span className="label" style={{ display: "flex", justifyContent: "space-between", fontSize: compact ? 12 : 14, letterSpacing: "0.1em", color: over ? C.ink : C.muted }}>
-        <span>{over ? "Final" : `Round ${m.round} of ${PD_ROUNDS}`}</span>
-        {over && <span>{lead ? "" : "Tie"}</span>}
+    <article className="gte-pop" style={{ boxSizing: "border-box", padding: compact ? "8px 14px" : "14px 18px", display: "flex", flexDirection: "column", gap: compact ? 4 : 10, background: C.paper2, border: `2.5px solid ${C.ink}`, borderRadius: compact ? 14 : 18, boxShadow: `4px 4px 0 ${C.ink}` }}>
+      <span className="label" style={{ display: "flex", justifyContent: "space-between", fontSize: compact ? 11 : 14, letterSpacing: "0.1em", color: over ? C.ink : C.muted }}>
+        <span>{!over ? `Round ${m.round} of ${PD_ROUNDS}` : played < PD_ROUNDS ? `Time ran out after ${played} of ${PD_ROUNDS} rounds` : "Final"}</span>
+        {over && !lead && <span>Tie</span>}
       </span>
       {[m.a, m.b].map((id) => {
         const t = teams.find((x) => x.id === id);
@@ -128,17 +129,17 @@ export function MatchCard({ m, teams, compact = false }: { m: Match; teams: Team
         const wins = over && lead === id;
         return (
           <div key={id} style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-            <Token team={t} index={teams.findIndex((x) => x.id === id)} size={compact ? 30 : 38} radius={10} />
+            <Token team={t} index={teams.findIndex((x) => x.id === id)} size={compact ? 26 : 38} radius={compact ? 8 : 10} />
             <span style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: compact ? 18 : 21, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t?.name ?? "Removed team"}</span>
+              <span style={{ fontSize: compact ? 17 : 21, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t?.name ?? "Removed team"}</span>
               {wins && (
                 <span className="label gte-stamp" style={{ flex: "none", padding: "2px 8px", borderRadius: 999, background: C.ink, color: C.mari, fontSize: 11, letterSpacing: "0.1em" }}>
                   Wins
                 </span>
               )}
             </span>
-            <MoveCells moves={side.mine} round={m.round} ready={side.ready} size={cell} />
-            <span key={side.score} className="mono gte-press" style={{ width: compact ? 44 : 56, textAlign: "right", fontSize: compact ? 26 : 34, fontWeight: 800, letterSpacing: "-0.04em" }}>
+            <MoveCells moves={side.mine} round={m.round} ready={side.ready} size={cell} live={!final} />
+            <span key={side.score} className="mono gte-press" style={{ width: compact ? 40 : 56, textAlign: "right", fontSize: compact ? 24 : 34, fontWeight: 800, letterSpacing: "-0.04em" }}>
               {side.score}
             </span>
           </div>
@@ -536,12 +537,12 @@ export function HostReveal({ q, results, teams, showMath }: { q: Question; resul
       </div>
 
       {r.matches ? (
-        <section style={{ position: "absolute", left: 904, right: 56, top: 108, display: "flex", flexDirection: "column", gap: 12 }}>
+        <section style={{ position: "absolute", left: 904, right: 56, top: 108, display: "flex", flexDirection: "column", gap: 10 }}>
           <h2 className="label" style={{ margin: 0, fontSize: 18 }}>
             Match results · totals go on the leaderboard
           </h2>
           {r.matches.map((m) => (
-            <MatchCard key={m.id} m={m} teams={teams} compact={r.matches!.length > 3} />
+            <MatchCard key={m.id} m={m} teams={teams} compact={r.matches!.length > 3} final />
           ))}
         </section>
       ) : (
