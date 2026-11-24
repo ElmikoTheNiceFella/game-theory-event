@@ -23,6 +23,8 @@ export function useGame() {
   }, []);
 
   useEffect(() => {
+    // fetch right away; don't wait for the realtime handshake (slow, and may never finish)
+    load();
     const ch = supabase
       .channel("event")
       .on("postgres_changes", { event: "*", schema: "public", table: "game" }, load)
